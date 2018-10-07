@@ -7,12 +7,35 @@ use std::iter::{FromIterator, FusedIterator};
 use std::marker::PhantomData;
 use std::{mem, ops};
 
+/// A doubly linked list implemented with a vector.
+///
+/// This provides many of the benefits of an actual linked list with a few tradeoffs. First, due t
+/// the use of an underlying vector, an individual insert operation may be O(n) due to allocating
+/// more space for the vector. However, it is amortized O(1) and it avoids the frequent allocation
+/// that traditional linked lists suffer from.
+///
+/// Another tradeoff is that extending a traditional linked list with another list is O(1) but a
+/// vector based implementation is O(n).
+///
+/// Lastly, the vector based implementation is likely to have better cache locality in general.
 pub struct VecList<EntryData> {
+    /// The backing storage for the list. This includes both used and unused indices.`
     entries: Vec<Entry<EntryData>>,
+
+    /// The current generation of the list. This is used to avoid the ABA problem.
     generation: usize,
+
+    /// The index of the head of the list.
     head: Option<usize>,
+
+    /// The length of the list since we cannot rely on the length of [`VecList::entries`] because
+    /// it includes unused indices.
     length: usize,
+
+    /// The index of the tail of the list.
     tail: Option<usize>,
+
+    /// The index of the head of the vacant indices.
     vacant_head: Option<usize>,
 }
 
@@ -373,7 +396,7 @@ impl<EntryData> VecList<EntryData> {
     ///
     /// The index of the newly inserted value will be returned.
     ///
-    /// Complexity: O(1)
+    /// Complexity: amortized O(1)
     ///
     /// # Panics
     ///
@@ -418,7 +441,7 @@ impl<EntryData> VecList<EntryData> {
     ///
     /// The index of the newly inserted value will be returned.
     ///
-    /// Complexity: O(1)
+    /// Complexity: amortized O(1)
     ///
     /// # Panics
     ///
@@ -663,7 +686,7 @@ impl<EntryData> VecList<EntryData> {
     ///
     /// The index of the newly inserted value will be returned.
     ///
-    /// Complexity: O(1)
+    /// Complexity: amortized O(1)
     ///
     /// # Examples
     ///
@@ -689,7 +712,7 @@ impl<EntryData> VecList<EntryData> {
     ///
     /// The index of the newly inserted value will be returned.
     ///
-    /// Complexity: O(1)
+    /// Complexity: amortized O(1)
     ///
     /// # Examples
     ///
@@ -1226,9 +1249,18 @@ where
     }
 }
 
+/// A wrapper type that indicates an index into the list.
+///
+/// This index may be invalidated by operations on the list itself.
 pub struct Index<EntryData> {
+    /// The generation of the entry currently at this index. This is used to avoid the ABA problem.
     generation: usize,
+
+    /// The actual index into the entry list.
     index: usize,
+
+    /// This type is parameterized on the entry data type to avoid indices being used across
+    /// differently typed lists.
     phantom: PhantomData<EntryData>,
 }
 
@@ -1283,12 +1315,21 @@ impl<EntryData> Index<EntryData> {
     }
 }
 
+/// An entry in the list. This can be either occupied or vacant.
 enum Entry<EntryData> {
+    /// An occupied entry contains actual entry data inserted by the user.
     Occupied(OccupiedEntry<EntryData>),
+
+    /// A vacant entry is one that can be reused.
     Vacant(VacantEntry),
 }
 
 impl<EntryData> Entry<EntryData> {
+    /// Returns the occupied entry by moving it out of the entry.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the variant is actually [`Entry::Vacant`].
     pub fn occupied(self) -> OccupiedEntry<EntryData> {
         use self::Entry::*;
 
@@ -1298,6 +1339,11 @@ impl<EntryData> Entry<EntryData> {
         }
     }
 
+    /// Returns an immutable reference to the occupied entry.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the variant is actually [`Entry::Vacant`].
     pub fn occupied_ref(&self) -> &OccupiedEntry<EntryData> {
         use self::Entry::*;
 
@@ -1307,6 +1353,11 @@ impl<EntryData> Entry<EntryData> {
         }
     }
 
+    /// Returns a mutable reference to the occupied entry.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the variant is actually [`Entry::Vacant`].
     pub fn occupied_mut(&mut self) -> &mut OccupiedEntry<EntryData> {
         use self::Entry::*;
 
@@ -1316,6 +1367,11 @@ impl<EntryData> Entry<EntryData> {
         }
     }
 
+    /// Returns an immutable reference to the vacant entry.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the variant is actually [`Entry::Occupied`].
     pub fn vacant_ref(&self) -> &VacantEntry {
         use self::Entry::*;
 
@@ -1326,14 +1382,23 @@ impl<EntryData> Entry<EntryData> {
     }
 }
 
+/// An occupied entry in the list.
 struct OccupiedEntry<EntryData> {
+    /// The generation of when this entry was inserted. This is used to avoid the ABA problem.
     generation: usize,
+
+    /// The index of the next occupied entry in the list.
     next: Option<usize>,
+
+    /// The index of the previous occupied entry in the list.
     previous: Option<usize>,
+
+    /// The actual value being stored in this entry.
     value: EntryData,
 }
 
 impl<EntryData> OccupiedEntry<EntryData> {
+    /// Convenience function for creating a new occupied entry.
     pub fn new(
         generation: usize,
         previous: Option<usize>,
@@ -1349,25 +1414,37 @@ impl<EntryData> OccupiedEntry<EntryData> {
     }
 }
 
+/// A vacant entry in the list.
 #[derive(Clone, Debug)]
 struct VacantEntry {
+    /// The index of the next vacant entry in the list.
     next: Option<usize>,
 }
 
 impl VacantEntry {
+    /// Convenience function for creating a new vacant entry.
     pub fn new(next: Option<usize>) -> VacantEntry {
         VacantEntry { next }
     }
 }
 
+/// An iterator that yields and removes all entries from the list.
 pub struct Drain<'entries, EntryData> {
+    /// The index of the head of the unvisited portion of the list.
     head: Option<usize>,
+
+    /// A reference to the entry list.
     list: &'entries mut VecList<EntryData>,
+
+    /// The number of entries that have not been visited.
     remaining: usize,
+
+    /// The index of the tail of the unvisited portion of the list.
     tail: Option<usize>,
 }
 
 impl<'entries, EntryData> Drain<'entries, EntryData> {
+    /// Creates an iterator that yields immutable references to entries in the list.
     fn iter(&self) -> Iter<EntryData> {
         Iter {
             entries: &self.list.entries,
@@ -1439,10 +1516,18 @@ where
     }
 }
 
+/// An iterator that yields all indices in the list.
 pub struct Indices<'entries, EntryData> {
+    /// A reference to the actual storage for the entry list.
     entries: &'entries Vec<Entry<EntryData>>,
+
+    /// The index of the head of the unvisited portion of the list.
     head: Option<usize>,
+
+    /// The number of entries that have not been visited.
     remaining: usize,
+
+    /// The index of the tail of the unvisited portion of the list.
     tail: Option<usize>,
 }
 
@@ -1508,15 +1593,24 @@ impl<'entries, EntryData> Iterator for Indices<'entries, EntryData> {
     }
 }
 
+/// An iterator that moves all entries out of the entry list.
 #[derive(Clone)]
 pub struct IntoIter<EntryData> {
+    /// The index of the head of the unvisited portion of the list.
     head: Option<usize>,
+
+    /// The entry list from which entries are yielded.
     list: VecList<EntryData>,
+
+    /// The number of entries that have not been visited.
     remaining: usize,
+
+    /// The index of the tail of the unvisited portion of the list.
     tail: Option<usize>,
 }
 
 impl<EntryData> IntoIter<EntryData> {
+    /// Creates an iterator that yields immutable references to entries in the list.
     fn iter(&self) -> Iter<EntryData> {
         Iter {
             entries: &self.list.entries,
@@ -1576,10 +1670,18 @@ impl<EntryData> Iterator for IntoIter<EntryData> {
     }
 }
 
+/// An iterator that yields immutable references to entries in the list.
 pub struct Iter<'entries, EntryData> {
+    /// A reference to the actual storage for the entry list.
     entries: &'entries Vec<Entry<EntryData>>,
+
+    /// The index of the head of the unvisited portion of the list.
     head: Option<usize>,
+
+    /// The number of entries that have not been visited.
     remaining: usize,
+
+    /// The index of the tail of the unvisited portion of the list.
     tail: Option<usize>,
 }
 
@@ -1643,16 +1745,27 @@ impl<'entries, EntryData> Iterator for Iter<'entries, EntryData> {
     }
 }
 
+/// An iterator that yields mutable references to entries in the list.
 pub struct IterMut<'entries, EntryData> {
     entries: *mut Vec<Entry<EntryData>>,
+
+    /// The index of the head of the unvisited portion of the list.
     head: Option<usize>,
+
+    /// Because [`IterMut::entries`] is a pointer, we need to have a phantom data here for the
+    /// lifetime parameter.
     phantom: PhantomData<&'entries mut Vec<Entry<EntryData>>>,
+
+    /// The number of entries that have not been visited.
     remaining: usize,
+
+    /// The index of the tail of the unvisited portion of the list.
     tail: Option<usize>,
 }
 
 impl<'entries, EntryData> IterMut<'entries, EntryData> {
-    pub fn iter(&self) -> Iter<EntryData> {
+    /// Creates an iterator that yields immutable references to entries in the list.
+    fn iter(&self) -> Iter<EntryData> {
         Iter {
             entries: unsafe { &*self.entries },
             head: self.head,
@@ -1715,6 +1828,8 @@ unsafe impl<'entries, EntryData> Send for IterMut<'entries, EntryData> where Ent
 
 unsafe impl<'entries, EntryData> Sync for IterMut<'entries, EntryData> where EntryData: Sync {}
 
+/// Iterator helper function that will get the next head index and update the current head/tail if
+/// appropriate.
 fn get_next_head(head: &mut Option<usize>, tail: &mut Option<usize>) -> Option<usize> {
     match (*head, *tail) {
         (Some(head_index), Some(_)) => {
@@ -1730,6 +1845,8 @@ fn get_next_head(head: &mut Option<usize>, tail: &mut Option<usize>) -> Option<u
     }
 }
 
+/// Iterator helper function that will get the next tail index and update the current head/tail if
+/// appropriate.
 fn get_next_tail(head: &mut Option<usize>, tail: &mut Option<usize>) -> Option<usize> {
     match (*head, *tail) {
         (Some(_), Some(tail_index)) => {
