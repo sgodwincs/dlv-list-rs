@@ -7,15 +7,15 @@ use std::iter::{FromIterator, FusedIterator};
 use std::marker::PhantomData;
 use std::{mem, ops};
 
-/// A doubly linked list implemented with a vector.
+/// A semi-doubly linked list implemented with a vector.
 ///
-/// This provides many of the benefits of an actual linked list with a few tradeoffs. First, due t
+/// This provides many of the benefits of an actual linked list with a few tradeoffs. First, due to
 /// the use of an underlying vector, an individual insert operation may be O(n) due to allocating
 /// more space for the vector. However, it is amortized O(1) and it avoids the frequent allocation
 /// that traditional linked lists suffer from.
 ///
 /// Another tradeoff is that extending a traditional linked list with another list is O(1) but a
-/// vector based implementation is O(n).
+/// vector based implementation is O(n). Splicing has a similar disadvantage.
 ///
 /// Lastly, the vector based implementation is likely to have better cache locality in general.
 pub struct VecList<EntryData> {
@@ -488,7 +488,7 @@ impl<EntryData> VecList<EntryData> {
         let index = self.insert_new(value, None, None);
         self.head = Some(index);
         self.tail = Some(index);
-        return Index::new(index, generation);
+        Index::new(index, generation)
     }
 
     /// Inserts the given value into the list with its expected previous and next value indices.
@@ -1195,10 +1195,6 @@ where
     fn eq(&self, other: &Self) -> bool {
         self.len() == other.len() && self.iter().eq(other)
     }
-
-    fn ne(&self, other: &Self) -> bool {
-        self.len() != other.len() || self.iter().ne(other)
-    }
 }
 
 impl<EntryData> PartialEq<LinkedList<EntryData>> for VecList<EntryData>
@@ -1207,10 +1203,6 @@ where
 {
     fn eq(&self, other: &LinkedList<EntryData>) -> bool {
         self.len() == other.len() && self.iter().eq(other)
-    }
-
-    fn ne(&self, other: &LinkedList<EntryData>) -> bool {
-        self.len() != other.len() || self.iter().ne(other)
     }
 }
 
@@ -1221,10 +1213,6 @@ where
     fn eq(&self, other: &Vec<EntryData>) -> bool {
         self.len() == other.len() && self.iter().eq(other)
     }
-
-    fn ne(&self, other: &Vec<EntryData>) -> bool {
-        self.len() != other.len() || self.iter().ne(other)
-    }
 }
 
 impl<'slice, EntryData> PartialEq<&'slice [EntryData]> for VecList<EntryData>
@@ -1233,10 +1221,6 @@ where
 {
     fn eq(&self, other: &&'slice [EntryData]) -> bool {
         self.len() == other.len() && self.iter().eq(other.iter())
-    }
-
-    fn ne(&self, other: &&'slice [EntryData]) -> bool {
-        self.len() != other.len() || self.iter().ne(other.iter())
     }
 }
 
@@ -1840,7 +1824,7 @@ fn get_next_head(head: &mut Option<usize>, tail: &mut Option<usize>) -> Option<u
 
             Some(head_index)
         }
-        (None, None) => return None,
+        (None, None) => None,
         _ => panic!("head and tail must agree on variant"),
     }
 }
@@ -1857,7 +1841,7 @@ fn get_next_tail(head: &mut Option<usize>, tail: &mut Option<usize>) -> Option<u
 
             Some(tail_index)
         }
-        (None, None) => return None,
+        (None, None) => None,
         _ => panic!("head and tail must agree on variant"),
     }
 }
