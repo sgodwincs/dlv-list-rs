@@ -1,0 +1,2731 @@
+use rand::{thread_rng, Rng};
+use std::cmp::Ordering;
+use std::collections::{HashMap, LinkedList};
+use std::fmt::{self, Debug, Formatter};
+use std::hash::{Hash, Hasher};
+use std::iter::{FromIterator, FusedIterator};
+use std::marker::PhantomData;
+use std::{mem, ops};
+
+pub struct VecList<EntryData> {
+    entries: Vec<Entry<EntryData>>,
+    generation: usize,
+    head: Option<usize>,
+    length: usize,
+    tail: Option<usize>,
+    vacant_head: Option<usize>,
+}
+
+impl<EntryData> VecList<EntryData> {
+    /// Returns an immutable reference to the value at the back of the list, if it exists.
+    ///
+    /// Complexity: O(1)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// assert_eq!(list.back(), None);
+    ///
+    /// list.push_back(0);
+    /// list.push_back(5);
+    /// assert_eq!(list.back(), Some(&5));
+    /// ```
+    pub fn back(&self) -> Option<&EntryData> {
+        let index = self.tail?;
+
+        match &self.entries[index] {
+            Entry::Occupied(entry) => Some(&entry.value),
+            _ => None,
+        }
+    }
+
+    /// Returns a mutable reference to the value at the back of the list, if it exists.
+    ///
+    /// Complexity: O(1)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// assert_eq!(list.back_mut(), None);
+    ///
+    /// list.push_back(0);
+    /// list.push_back(5);
+    ///
+    /// let mut back = list.back_mut().unwrap();
+    /// assert_eq!(back, &mut 5);
+    /// *back *= 2;
+    ///
+    /// assert_eq!(list.back(), Some(&10));
+    /// ```
+    pub fn back_mut(&mut self) -> Option<&mut EntryData> {
+        let index = self.tail?;
+
+        match &mut self.entries[index] {
+            Entry::Occupied(entry) => Some(&mut entry.value),
+            _ => None,
+        }
+    }
+
+    /// Returns the capacity of the list.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let list: VecList<u32> = VecList::new();
+    /// assert_eq!(list.capacity(), 0);
+    ///
+    /// let list: VecList<u32> = VecList::with_capacity(10);
+    /// assert_eq!(list.capacity(), 10);
+    /// ```
+    pub fn capacity(&self) -> usize {
+        self.entries.capacity()
+    }
+
+    /// Removes all values from the list and invalidates all existing indices.
+    ///
+    /// Complexity: O(n)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    ///
+    /// list.push_back(5);
+    /// assert!(!list.is_empty());
+    ///
+    /// list.clear();
+    /// assert!(list.is_empty());
+    /// ```
+    pub fn clear(&mut self) {
+        self.entries.clear();
+        self.generation += 1;
+        self.head = None;
+        self.length = 0;
+        self.tail = None;
+        self.vacant_head = None;
+    }
+
+    /// Returns whether or not the list contains the given value.
+    ///
+    /// Complexity: O(n)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// assert!(!list.contains(&0));
+    ///
+    /// list.push_back(0);
+    /// assert!(list.contains(&0));
+    /// ```
+    pub fn contains(&self, value: &EntryData) -> bool
+    where
+        EntryData: PartialEq,
+    {
+        self.iter().any(|entry| entry == value)
+    }
+
+    /// Creates a draining iterator that removes all values from the list and yields them in order.
+    ///
+    /// All values are removed even if the iterator is only partially consumed or not consumed at
+    /// all.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// list.push_back(0);
+    /// list.push_back(5);
+    ///
+    /// {
+    ///     let mut iter = list.drain();
+    ///     assert_eq!(iter.next(), Some(0));
+    ///     assert_eq!(iter.next(), Some(5));
+    ///     assert_eq!(iter.next(), None);
+    /// }
+    ///
+    /// println!("{}", list.len());
+    /// assert!(list.is_empty());
+    /// ```
+    pub fn drain(&mut self) -> Drain<EntryData> {
+        Drain {
+            head: self.head,
+            remaining: self.length,
+            tail: self.tail,
+            list: self,
+        }
+    }
+
+    /// Returns an immutable reference to the value at the front of the list, if it exists.
+    ///
+    /// Complexity: O(1)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// assert_eq!(list.front(), None);
+    ///
+    /// list.push_front(0);
+    /// list.push_front(5);
+    /// assert_eq!(list.front(), Some(&5));
+    /// ```
+    pub fn front(&self) -> Option<&EntryData> {
+        let index = self.head?;
+
+        match &self.entries[index] {
+            Entry::Occupied(entry) => Some(&entry.value),
+            _ => None,
+        }
+    }
+
+    /// Returns a mutable reference to the value at the front of the list, if it exists.
+    ///
+    /// Complexity: O(1)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// assert_eq!(list.front_mut(), None);
+    ///
+    /// list.push_front(0);
+    /// list.push_front(5);
+    ///
+    /// let mut front = list.front_mut().unwrap();
+    /// assert_eq!(front, &mut 5);
+    /// *front *= 2;
+    ///
+    /// assert_eq!(list.front(), Some(&10));
+    /// ```
+    pub fn front_mut(&mut self) -> Option<&mut EntryData> {
+        let index = self.head?;
+
+        match &mut self.entries[index] {
+            Entry::Occupied(entry) => Some(&mut entry.value),
+            _ => None,
+        }
+    }
+
+    /// Returns an immutable reference to the value at the given index.
+    ///
+    /// If the index refers to an index not in the list anymore or if the index has been
+    /// invalidated, then [`None`] will be returned.
+    ///
+    /// Complexity: O(1)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// let index = list.push_front(0);
+    /// assert_eq!(list.get(index), Some(&0));
+    ///
+    /// let index = list.push_front(5);
+    /// assert_eq!(list.get(index), Some(&5));
+    /// ```
+    pub fn get(&self, index: Index<EntryData>) -> Option<&EntryData> {
+        match self.entries.get(index.index)? {
+            Entry::Occupied(entry) if entry.generation == index.generation => Some(&entry.value),
+            _ => None,
+        }
+    }
+
+    /// Returns a mutable reference to the value at the given index.
+    ///
+    /// If the index refers to an index not in the list anymore or if the index has been
+    /// invalidated, then [`None`] will be returned.
+    ///
+    /// Complexity: O(1)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// let index = list.push_front(0);
+    /// let value = list.get_mut(index).unwrap();
+    /// *value = 100;
+    /// assert_eq!(list.get(index), Some(&100));
+    /// ```
+    pub fn get_mut(&mut self, index: Index<EntryData>) -> Option<&mut EntryData> {
+        match self.entries.get_mut(index.index)? {
+            Entry::Occupied(entry) if entry.generation == index.generation => {
+                Some(&mut entry.value)
+            }
+            _ => None,
+        }
+    }
+
+    /// Returns the index of the value next to the value at the given index.
+    ///
+    /// If the index refers to an index not in the list anymore or if the index has been
+    /// invalidated, then [`None`] will be returned.
+    ///
+    /// Complexity: O(1)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    ///
+    /// let index_1 = list.push_back(0);
+    /// assert_eq!(list.get_next_index(index_1), None);
+    ///
+    /// let index_2 = list.push_back(5);
+    /// assert_eq!(list.get_next_index(index_1), Some(index_2));
+    /// ```
+    pub fn get_next_index(&self, index: Index<EntryData>) -> Option<Index<EntryData>> {
+        match self.entries.get(index.index)? {
+            Entry::Occupied(entry) if entry.generation == index.generation => {
+                let next_index = entry.next?;
+                let next_entry = self.entries[next_index].occupied_ref();
+                Some(Index::new(next_index, next_entry.generation))
+            }
+            _ => None,
+        }
+    }
+
+    /// Returns the index of the value previous to the value at the given index.
+    ///
+    /// If the index refers to an index not in the list anymore or if the index has been
+    /// invalidated, then [`None`] will be returned.
+    ///
+    /// Complexity: O(1)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    ///
+    /// let index_1 = list.push_front(0);
+    /// assert_eq!(list.get_previous_index(index_1), None);
+    ///
+    /// let index_2 = list.push_front(5);
+    /// assert_eq!(list.get_previous_index(index_1), Some(index_2));
+    /// ```
+    pub fn get_previous_index(&self, index: Index<EntryData>) -> Option<Index<EntryData>> {
+        match self.entries.get(index.index)? {
+            Entry::Occupied(entry) if entry.generation == index.generation => {
+                let previous_index = entry.previous?;
+                let previous_entry = self.entries[previous_index].occupied_ref();
+                Some(Index::new(previous_index, previous_entry.generation))
+            }
+            _ => None,
+        }
+    }
+
+    /// Creates an indices iterator which will yield all indices of the list in order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// list.push_front(0);
+    /// list.push_front(5);
+    ///
+    /// let mut indices = list.indices();
+    /// let index = indices.next().unwrap();
+    /// assert_eq!(list.get(index), Some(&5));
+    ///
+    /// let index = indices.next().unwrap();
+    /// assert_eq!(list.get(index), Some(&0));
+    ///
+    /// assert_eq!(indices.next(), None);
+    /// ```
+    pub fn indices(&self) -> Indices<EntryData> {
+        Indices {
+            entries: &self.entries,
+            head: self.head,
+            remaining: self.length,
+            tail: self.tail,
+        }
+    }
+
+    /// Inserts the given value after the value at the given index.
+    ///
+    /// The index of the newly inserted value will be returned.
+    ///
+    /// Complexity: O(1)
+    ///
+    /// # Panics
+    ///
+    /// Panics if the index refers to an index not in the list anymore or if the index has been
+    /// invalidated. This is enforced because this function will consume the value to be inserted,
+    /// and if it cannot be inserted (due to the index not being valid), then it will be lost.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// list.push_front(0);
+    /// let index_1 = list.push_front(5);
+    /// list.push_front(10);
+    ///
+    /// let index_2 = list.insert_after(index_1, 1000);
+    /// assert_eq!(list.get_next_index(index_1), Some(index_2));
+    /// ```
+    pub fn insert_after(&mut self, index: Index<EntryData>, value: EntryData) -> Index<EntryData> {
+        let next_index = match &mut self.entries[index.index] {
+            Entry::Occupied(entry) if entry.generation == index.generation => entry.next,
+            _ => panic!("expected occupied entry with correct generation"),
+        };
+        let new_index = self.insert_new(value, Some(index.index), next_index);
+        let entry = self.entries[index.index].occupied_mut();
+        entry.next = Some(new_index);
+
+        if Some(index.index) == self.tail {
+            self.tail = Some(new_index);
+        }
+
+        if let Some(next_index) = next_index {
+            self.entries[next_index].occupied_mut().previous = Some(new_index);
+        }
+
+        Index::new(new_index, self.generation)
+    }
+
+    /// Inserts the given value before the value at the given index.
+    ///
+    /// The index of the newly inserted value will be returned.
+    ///
+    /// Complexity: O(1)
+    ///
+    /// # Panics
+    ///
+    /// Panics if the index refers to an index not in the list anymore or if the index has been
+    /// invalidated. This is enforced because this function will consume the value to be inserted,
+    /// and if it cannot be inserted (due to the index not being valid), then it will be lost.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// list.push_front(0);
+    /// let index_1 = list.push_front(5);
+    /// list.push_front(10);
+    ///
+    /// let index_2 = list.insert_before(index_1, 1000);
+    /// assert_eq!(list.get_previous_index(index_1), Some(index_2));
+    /// ```
+    pub fn insert_before(&mut self, index: Index<EntryData>, value: EntryData) -> Index<EntryData> {
+        let previous_index = match &mut self.entries[index.index] {
+            Entry::Occupied(entry) if entry.generation == index.generation => entry.previous,
+            _ => panic!("expected occupied entry with correct generation"),
+        };
+        let new_index = self.insert_new(value, previous_index, Some(index.index));
+        let entry = self.entries[index.index].occupied_mut();
+        entry.previous = Some(new_index);
+
+        if Some(index.index) == self.head {
+            self.head = Some(new_index);
+        }
+
+        if let Some(previous_index) = previous_index {
+            self.entries[previous_index].occupied_mut().next = Some(new_index);
+        }
+
+        Index::new(new_index, self.generation)
+    }
+
+    /// Inserts the given value into the list with the assumption that it is currently empty.
+    fn insert_empty(&mut self, value: EntryData) -> Index<EntryData> {
+        let generation = self.generation;
+        let index = self.insert_new(value, None, None);
+        self.head = Some(index);
+        self.tail = Some(index);
+        return Index::new(index, generation);
+    }
+
+    /// Inserts the given value into the list with its expected previous and next value indices.
+    fn insert_new(
+        &mut self,
+        value: EntryData,
+        previous: Option<usize>,
+        next: Option<usize>,
+    ) -> usize {
+        use self::Entry::*;
+
+        self.length += 1;
+
+        match self.vacant_head {
+            Some(index) => {
+                self.vacant_head = self.entries[index].vacant_ref().next;
+                self.entries[index] =
+                    Occupied(OccupiedEntry::new(self.generation, previous, next, value));
+                index
+            }
+            None => {
+                let index = self.entries.len();
+
+                self.entries.push(Occupied(OccupiedEntry::new(
+                    self.generation,
+                    previous,
+                    next,
+                    value,
+                )));
+
+                index
+            }
+        }
+    }
+
+    /// Returns whether or not the list is empty.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// assert!(list.is_empty());
+    ///
+    /// list.push_back(0);
+    /// assert!(!list.is_empty());
+    /// ```
+    pub fn is_empty(&self) -> bool {
+        self.length == 0
+    }
+
+    /// Creates an iterator that yields immutable references to values in the list in order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// list.push_back(0);
+    /// list.push_back(10);
+    /// list.push_back(200);
+    /// list.push_back(-10);
+    ///
+    /// let mut iter = list.iter();
+    /// assert_eq!(iter.next(), Some(&0));
+    /// assert_eq!(iter.next(), Some(&10));
+    /// assert_eq!(iter.next(), Some(&200));
+    /// assert_eq!(iter.next(), Some(&-10));
+    /// assert_eq!(iter.next(), None);
+    /// ```
+    pub fn iter(&self) -> Iter<EntryData> {
+        Iter {
+            entries: &self.entries,
+            head: self.head,
+            remaining: self.length,
+            tail: self.tail,
+        }
+    }
+
+    /// Creates an iterator that yields mutable references to values in the list in order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// list.push_back(0);
+    /// list.push_back(10);
+    /// list.push_back(200);
+    /// list.push_back(-10);
+    ///
+    /// let mut iter = list.iter_mut();
+    /// assert_eq!(iter.next(), Some(&mut 0));
+    /// assert_eq!(iter.next(), Some(&mut 10));
+    /// assert_eq!(iter.next(), Some(&mut 200));
+    /// assert_eq!(iter.next(), Some(&mut -10));
+    /// assert_eq!(iter.next(), None);
+    /// ```
+    pub fn iter_mut(&mut self) -> IterMut<EntryData> {
+        IterMut {
+            entries: &mut self.entries as *mut _,
+            head: self.head,
+            phantom: PhantomData,
+            remaining: self.length,
+            tail: self.tail,
+        }
+    }
+
+    /// Returns the number of values in the list.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// assert_eq!(list.len(), 0);
+    ///
+    /// list.push_back(0);
+    /// list.push_back(1);
+    /// list.push_back(2);
+    /// assert_eq!(list.len(), 3);
+    /// ```
+    pub fn len(&self) -> usize {
+        self.length
+    }
+
+    /// Creates a new list with no initial capacity.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// let index = list.push_back(0);
+    /// assert_eq!(list.get(index), Some(&0));
+    /// ```
+    pub fn new() -> Self {
+        VecList::default()
+    }
+
+    /// Removes and returns the value at the back of the list, if it exists.
+    ///
+    /// Complexity: O(1)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// assert_eq!(list.pop_back(), None);
+    ///
+    /// list.push_back(0);
+    /// list.push_back(1);
+    /// list.push_back(2);
+    /// assert_eq!(list.len(), 3);
+    ///
+    /// assert_eq!(list.pop_back(), Some(2));
+    /// assert_eq!(list.len(), 2);
+    /// ```
+    pub fn pop_back(&mut self) -> Option<EntryData> {
+        self.remove_entry(self.tail?).map(|entry| entry.value)
+    }
+
+    /// Removes and returns the value at the front of the list, if it exists.
+    ///
+    /// Complexity: O(1)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// assert_eq!(list.pop_front(), None);
+    ///
+    /// list.push_front(0);
+    /// list.push_front(1);
+    /// list.push_front(2);
+    /// assert_eq!(list.len(), 3);
+    ///
+    /// assert_eq!(list.pop_front(), Some(2));
+    /// assert_eq!(list.len(), 2);
+    /// ```
+    pub fn pop_front(&mut self) -> Option<EntryData> {
+        self.remove_entry(self.head?).map(|entry| entry.value)
+    }
+
+    /// Inserts the given value to the back of the list.
+    ///
+    /// The index of the newly inserted value will be returned.
+    ///
+    /// Complexity: O(1)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// let index = list.push_back(0);
+    /// assert_eq!(list.get(index), Some(&0));
+    /// ```
+    pub fn push_back(&mut self, value: EntryData) -> Index<EntryData> {
+        let tail_index = match self.tail {
+            Some(index) => index,
+            None => return self.insert_empty(value),
+        };
+        let index = self.insert_new(value, Some(tail_index), None);
+        self.entries[tail_index].occupied_mut().next = Some(index);
+        self.tail = Some(index);
+        Index::new(index, self.generation)
+    }
+
+    /// Inserts the given value to the front of the list.
+    ///
+    /// The index of the newly inserted value will be returned.
+    ///
+    /// Complexity: O(1)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// let index = list.push_front(0);
+    /// assert_eq!(list.get(index), Some(&0));
+    /// ```
+    pub fn push_front(&mut self, value: EntryData) -> Index<EntryData> {
+        let head_index = match self.head {
+            Some(index) => index,
+            None => return self.insert_empty(value),
+        };
+        let index = self.insert_new(value, None, Some(head_index));
+        self.entries[head_index].occupied_mut().previous = Some(index);
+        self.head = Some(index);
+        Index::new(index, self.generation)
+    }
+
+    /// Removes and returns the value at the given index, if it exists.
+    ///
+    /// If the index refers to an index not in the list anymore or if the index has been
+    /// invalidated, then [`None`] will be returned and the list will be unaffected.
+    ///
+    /// Complexity: O(1)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// let index = list.push_back(0);
+    /// assert_eq!(list.remove(index), Some(0));
+    /// assert_eq!(list.remove(index), None);
+    /// ```
+    pub fn remove(&mut self, index: Index<EntryData>) -> Option<EntryData> {
+        let (previous_index, next_index) = match &self.entries[index.index] {
+            Entry::Occupied(entry) if entry.generation == index.generation => {
+                (entry.previous, entry.next)
+            }
+            _ => return None,
+        };
+        Some(
+            self.remove_helper(previous_index, index.index, next_index)
+                .value,
+        )
+    }
+
+    /// Removes and returns the entry at the given index, if it exists.
+    ///
+    /// If the index refers to an index not in the list anymore or if the index has been
+    /// invalidated, then [`None`] will be returned and the list will be unaffected.
+    fn remove_entry(&mut self, index: usize) -> Option<OccupiedEntry<EntryData>> {
+        use self::Entry::*;
+
+        let (previous_index, next_index) = match &self.entries[index] {
+            Occupied(entry) => (entry.previous, entry.next),
+            Vacant(_) => return None,
+        };
+        Some(self.remove_helper(previous_index, index, next_index))
+    }
+
+    /// Removes and returns the entry at the given index with the entries previous and next index
+    /// values.
+    ///
+    /// It is assumed that there is an entry at the given index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called when the list is empty. Behavior is undefined if provided indices do not
+    /// follow the expected constraints.
+    fn remove_helper(
+        &mut self,
+        previous_index: Option<usize>,
+        index: usize,
+        next_index: Option<usize>,
+    ) -> OccupiedEntry<EntryData> {
+        let head_index = self.head.expect("expected head index");
+        let tail_index = self.tail.expect("expected tail index");
+        let removed_entry = mem::replace(
+            &mut self.entries[index],
+            Entry::Vacant(VacantEntry::new(self.vacant_head)),
+        );
+
+        self.generation = self.generation.wrapping_add(1);
+        self.length -= 1;
+        self.vacant_head = Some(index);
+
+        if index == head_index && index == tail_index {
+            self.head = None;
+            self.tail = None;
+        } else if index == head_index {
+            self.entries[next_index.expect("expected next entry to exist")]
+                .occupied_mut()
+                .previous = None;
+            self.head = next_index;
+        } else if index == tail_index {
+            self.entries[previous_index.expect("expected previous entry to exist")]
+                .occupied_mut()
+                .next = None;
+            self.tail = previous_index;
+        } else {
+            self.entries[next_index.expect("expected next entry to exist")]
+                .occupied_mut()
+                .previous = previous_index;
+            self.entries[previous_index.expect("expected previous entry to exist")]
+                .occupied_mut()
+                .next = next_index;
+        }
+
+        removed_entry.occupied()
+    }
+
+    /// Reserves capacity for the given expected size increase.
+    ///
+    /// The collection may reserve more space to avoid frequent reallocations. After calling this
+    /// function, capacity will be greater than or equal to `self.len() + additional_capacity`.
+    /// Does nothing if the current capacity is already sufficient.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list: VecList<u32> = VecList::new();
+    /// assert_eq!(list.capacity(), 0);
+    ///
+    /// list.reserve(10);
+    /// assert!(list.capacity() >= 10);
+    /// ```
+    pub fn reserve(&mut self, additional_capacity: usize) {
+        self.entries.reserve(additional_capacity);
+    }
+
+    /// Removes all elements from the list not satisfying the given predicate.
+    ///
+    /// Complexity: O(n)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// list.push_back(0);
+    /// list.push_back(-1);
+    /// list.push_back(1);
+    /// list.push_back(-2);
+    /// list.retain(|&value| value >= 0);
+    ///
+    /// let mut iter = list.iter();
+    /// assert_eq!(iter.next(), Some(&0));
+    /// assert_eq!(iter.next(), Some(&1));
+    /// assert_eq!(iter.next(), None);
+    /// ```
+    pub fn retain<Predicate>(&mut self, mut predicate: Predicate)
+    where
+        Predicate: FnMut(&EntryData) -> bool,
+    {
+        let mut next_index = self.head;
+
+        while let Some(index) = next_index {
+            let entry = &self.entries[index].occupied_ref();
+            next_index = entry.next;
+
+            if !predicate(&entry.value) {
+                self.remove_entry(index);
+            }
+        }
+    }
+
+    /// Reorganizes the existing values to ensure maximum cache locality and shrinks the list such
+    /// that the capacity is exactly [`minimum_capacity`].
+    ///
+    /// Despite the name implying that the list will "shrink", this function can actually increase
+    /// the capacity of the list.
+    ///
+    /// Complexity: O(n)
+    ///
+    /// # Panics
+    ///
+    /// Panics if the given minimum capacity is less than the current length of the list.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// let index_1 = list.push_back(5);
+    /// let index_2 = list.push_back(10);
+    /// let index_3 = list.push_front(100);
+    /// list.remove(index_1);
+    ///
+    /// assert!(list.capacity() >= 3);
+    ///
+    /// let mut map = list.shrink_to(list.len() + 5);
+    /// assert_eq!(list.capacity(), 7);
+    /// assert_eq!(map.len(), 2);
+    ///
+    /// let index_2 = map.remove(&index_2).unwrap();
+    /// let index_3 = map.remove(&index_3).unwrap();
+    ///
+    /// assert_eq!(list.get(index_2), Some(&10));
+    /// assert_eq!(list.get(index_3), Some(&100));
+    ///
+    /// let mut iter = list.iter();
+    /// assert_eq!(iter.next(), Some(&100));
+    /// assert_eq!(iter.next(), Some(&10));
+    /// assert_eq!(iter.next(), None);
+    /// ```
+    pub fn shrink_to(
+        &mut self,
+        minimum_capacity: usize,
+    ) -> HashMap<Index<EntryData>, Index<EntryData>> {
+        assert!(
+            minimum_capacity >= self.length,
+            "cannot shrink to capacity lower than current length"
+        );
+
+        let mut count = 0;
+        let mut entries = Vec::with_capacity(minimum_capacity);
+        let generation = thread_rng().gen();
+        let length = self.length;
+        let mut map = HashMap::with_capacity(length);
+        let mut next_index = self.head;
+
+        while let Some(index) = next_index {
+            let mut entry = self.remove_entry(index).expect("expected occupied entry");
+            next_index = entry.next;
+            map.insert(
+                Index::new(index, entry.generation),
+                Index::new(count, generation),
+            );
+
+            entry.generation = generation;
+            entry.previous = if count > 0 { Some(count - 1) } else { None };
+            entry.next = if count < length - 1 {
+                Some(count + 1)
+            } else {
+                None
+            };
+
+            entries.push(Entry::Occupied(entry));
+            count += 1;
+        }
+
+        self.entries = entries;
+        self.generation = generation;
+        self.head = Some(0);
+        self.length = length;
+        self.tail = Some(length - 1);
+        self.vacant_head = None;
+        map
+    }
+
+    /// Reorganizes the existing values to ensure maximum cache locality and shrinks the list such
+    /// that no additional capacity exists.
+    ///
+    /// This is equivalent to calling [`VecList::shrink_to`] with the current length.
+    ///
+    /// Complexity: O(n)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// let index_1 = list.push_back(5);
+    /// let index_2 = list.push_back(10);
+    /// let index_3 = list.push_front(100);
+    /// list.remove(index_1);
+    ///
+    /// assert!(list.capacity() >= 3);
+    ///
+    /// let mut map = list.shrink_to_fit();
+    /// assert_eq!(list.capacity(), 2);
+    /// assert_eq!(map.len(), 2);
+    ///
+    /// let index_2 = map.remove(&index_2).unwrap();
+    /// let index_3 = map.remove(&index_3).unwrap();
+    ///
+    /// assert_eq!(list.get(index_2), Some(&10));
+    /// assert_eq!(list.get(index_3), Some(&100));
+    ///
+    /// let mut iter = list.iter();
+    /// assert_eq!(iter.next(), Some(&100));
+    /// assert_eq!(iter.next(), Some(&10));
+    /// assert_eq!(iter.next(), None);
+    /// ```
+    pub fn shrink_to_fit(&mut self) -> HashMap<Index<EntryData>, Index<EntryData>>
+    where
+        EntryData: Debug,
+    {
+        self.shrink_to(self.length)
+    }
+
+    /// Creates a new list with the given capacity.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list: VecList<u32> = VecList::new();
+    /// assert_eq!(list.capacity(), 0);
+    ///
+    /// let mut list: VecList<u32> = VecList::with_capacity(10);
+    /// assert_eq!(list.capacity(), 10);
+    /// ```
+    pub fn with_capacity(capacity: usize) -> Self {
+        VecList {
+            entries: Vec::with_capacity(capacity),
+            generation: thread_rng().gen(),
+            head: None,
+            length: 0,
+            tail: None,
+            vacant_head: None,
+        }
+    }
+}
+
+impl<EntryData> Clone for VecList<EntryData>
+where
+    EntryData: Clone,
+{
+    fn clone(&self) -> Self {
+        self.iter().cloned().collect()
+    }
+}
+
+impl<EntryData> Debug for VecList<EntryData>
+where
+    EntryData: Debug,
+{
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        formatter.debug_list().entries(self.iter()).finish()
+    }
+}
+
+impl<EntryData> Default for VecList<EntryData> {
+    fn default() -> Self {
+        VecList {
+            entries: Vec::default(),
+            generation: thread_rng().gen(),
+            head: None,
+            length: 0,
+            tail: None,
+            vacant_head: None,
+        }
+    }
+}
+
+impl<EntryData> Eq for VecList<EntryData> where EntryData: Eq {}
+
+impl<EntryData> Extend<EntryData> for VecList<EntryData> {
+    fn extend<Iter>(&mut self, iter: Iter)
+    where
+        Iter: IntoIterator<Item = EntryData>,
+    {
+        for value in iter {
+            self.push_back(value);
+        }
+    }
+}
+
+impl<'entries, EntryData> Extend<&'entries EntryData> for VecList<EntryData>
+where
+    EntryData: 'entries + Copy,
+{
+    fn extend<Iter>(&mut self, iter: Iter)
+    where
+        Iter: IntoIterator<Item = &'entries EntryData>,
+    {
+        self.extend(iter.into_iter().cloned())
+    }
+}
+
+impl<EntryData> FromIterator<EntryData> for VecList<EntryData> {
+    fn from_iter<Iter>(iter: Iter) -> Self
+    where
+        Iter: IntoIterator<Item = EntryData>,
+    {
+        let mut list = VecList::new();
+        list.extend(iter);
+        list
+    }
+}
+
+impl<EntryData> Hash for VecList<EntryData>
+where
+    EntryData: Hash,
+{
+    fn hash<StateHasher>(&self, state: &mut StateHasher)
+    where
+        StateHasher: Hasher,
+    {
+        self.len().hash(state);
+
+        for value in self {
+            value.hash(state);
+        }
+    }
+}
+
+impl<EntryData> ops::Index<Index<EntryData>> for VecList<EntryData> {
+    type Output = EntryData;
+
+    fn index(&self, index: Index<EntryData>) -> &Self::Output {
+        self.get(index).expect("expected entry at index")
+    }
+}
+
+impl<EntryData> ops::IndexMut<Index<EntryData>> for VecList<EntryData> {
+    fn index_mut(&mut self, index: Index<EntryData>) -> &mut Self::Output {
+        self.get_mut(index).expect("expected entry at index")
+    }
+}
+
+impl<EntryData> IntoIterator for VecList<EntryData> {
+    type IntoIter = IntoIter<EntryData>;
+    type Item = EntryData;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter {
+            head: self.head,
+            remaining: self.length,
+            tail: self.tail,
+            list: self,
+        }
+    }
+}
+
+impl<'entries, EntryData> IntoIterator for &'entries VecList<EntryData> {
+    type IntoIter = Iter<'entries, EntryData>;
+    type Item = &'entries EntryData;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Iter {
+            entries: &self.entries,
+            head: self.head,
+            remaining: self.length,
+            tail: self.tail,
+        }
+    }
+}
+
+impl<'entries, EntryData> IntoIterator for &'entries mut VecList<EntryData> {
+    type IntoIter = IterMut<'entries, EntryData>;
+    type Item = &'entries mut EntryData;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IterMut {
+            entries: &mut self.entries as *mut _,
+            head: self.head,
+            phantom: PhantomData,
+            remaining: self.length,
+            tail: self.tail,
+        }
+    }
+}
+
+impl<EntryData> Ord for VecList<EntryData>
+where
+    EntryData: Ord,
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.iter().cmp(other)
+    }
+}
+
+impl<EntryData> PartialEq for VecList<EntryData>
+where
+    EntryData: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.len() == other.len() && self.iter().eq(other)
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        self.len() != other.len() || self.iter().ne(other)
+    }
+}
+
+impl<EntryData> PartialEq<LinkedList<EntryData>> for VecList<EntryData>
+where
+    EntryData: PartialEq,
+{
+    fn eq(&self, other: &LinkedList<EntryData>) -> bool {
+        self.len() == other.len() && self.iter().eq(other)
+    }
+
+    fn ne(&self, other: &LinkedList<EntryData>) -> bool {
+        self.len() != other.len() || self.iter().ne(other)
+    }
+}
+
+impl<EntryData> PartialEq<Vec<EntryData>> for VecList<EntryData>
+where
+    EntryData: PartialEq,
+{
+    fn eq(&self, other: &Vec<EntryData>) -> bool {
+        self.len() == other.len() && self.iter().eq(other)
+    }
+
+    fn ne(&self, other: &Vec<EntryData>) -> bool {
+        self.len() != other.len() || self.iter().ne(other)
+    }
+}
+
+impl<'slice, EntryData> PartialEq<&'slice [EntryData]> for VecList<EntryData>
+where
+    EntryData: PartialEq,
+{
+    fn eq(&self, other: &&'slice [EntryData]) -> bool {
+        self.len() == other.len() && self.iter().eq(other.iter())
+    }
+
+    fn ne(&self, other: &&'slice [EntryData]) -> bool {
+        self.len() != other.len() || self.iter().ne(other.iter())
+    }
+}
+
+impl<EntryData> PartialOrd for VecList<EntryData>
+where
+    EntryData: PartialOrd<EntryData>,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.iter().partial_cmp(other)
+    }
+}
+
+pub struct Index<EntryData> {
+    generation: usize,
+    index: usize,
+    phantom: PhantomData<EntryData>,
+}
+
+impl<EntryData> Clone for Index<EntryData> {
+    fn clone(&self) -> Self {
+        Index {
+            generation: self.generation,
+            index: self.index,
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl<EntryData> Copy for Index<EntryData> {}
+
+impl<EntryData> Debug for Index<EntryData> {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        formatter
+            .debug_tuple("Index")
+            .field(&self.index)
+            .field(&self.generation)
+            .finish()
+    }
+}
+
+impl<EntryData> Eq for Index<EntryData> {}
+
+impl<EntryData> Hash for Index<EntryData> {
+    fn hash<StateHasher>(&self, hasher: &mut StateHasher)
+    where
+        StateHasher: Hasher,
+    {
+        self.index.hash(hasher);
+        self.generation.hash(hasher);
+    }
+}
+
+impl<EntryData> PartialEq for Index<EntryData> {
+    fn eq(&self, other: &Self) -> bool {
+        self.generation == other.generation && self.index == other.index
+    }
+}
+
+impl<EntryData> Index<EntryData> {
+    /// Convenience function for creating new index.
+    pub(self) fn new(index: usize, generation: usize) -> Index<EntryData> {
+        Index {
+            generation,
+            index,
+            phantom: PhantomData,
+        }
+    }
+}
+
+enum Entry<EntryData> {
+    Occupied(OccupiedEntry<EntryData>),
+    Vacant(VacantEntry),
+}
+
+impl<EntryData> Entry<EntryData> {
+    pub fn occupied(self) -> OccupiedEntry<EntryData> {
+        use self::Entry::*;
+
+        match self {
+            Occupied(entry) => entry,
+            Vacant(_) => panic!("expected occupied entry"),
+        }
+    }
+
+    pub fn occupied_ref(&self) -> &OccupiedEntry<EntryData> {
+        use self::Entry::*;
+
+        match self {
+            Occupied(entry) => entry,
+            Vacant(_) => panic!("expected occupied entry"),
+        }
+    }
+
+    pub fn occupied_mut(&mut self) -> &mut OccupiedEntry<EntryData> {
+        use self::Entry::*;
+
+        match self {
+            Occupied(entry) => entry,
+            Vacant(_) => panic!("expected occupied entry"),
+        }
+    }
+
+    pub fn vacant_ref(&self) -> &VacantEntry {
+        use self::Entry::*;
+
+        match self {
+            Vacant(entry) => entry,
+            Occupied(_) => panic!("expected vacant entry"),
+        }
+    }
+}
+
+struct OccupiedEntry<EntryData> {
+    generation: usize,
+    next: Option<usize>,
+    previous: Option<usize>,
+    value: EntryData,
+}
+
+impl<EntryData> OccupiedEntry<EntryData> {
+    pub fn new(
+        generation: usize,
+        previous: Option<usize>,
+        next: Option<usize>,
+        value: EntryData,
+    ) -> OccupiedEntry<EntryData> {
+        OccupiedEntry {
+            generation,
+            next,
+            previous,
+            value,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct VacantEntry {
+    next: Option<usize>,
+}
+
+impl VacantEntry {
+    pub fn new(next: Option<usize>) -> VacantEntry {
+        VacantEntry { next }
+    }
+}
+
+pub struct Drain<'entries, EntryData> {
+    head: Option<usize>,
+    list: &'entries mut VecList<EntryData>,
+    remaining: usize,
+    tail: Option<usize>,
+}
+
+impl<'entries, EntryData> Drain<'entries, EntryData> {
+    fn iter(&self) -> Iter<EntryData> {
+        Iter {
+            entries: &self.list.entries,
+            head: self.head,
+            remaining: self.remaining,
+            tail: self.tail,
+        }
+    }
+}
+
+impl<'entries, EntryData> Debug for Drain<'entries, EntryData>
+where
+    EntryData: Debug,
+{
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        formatter.write_str("Drain(")?;
+        formatter.debug_list().entries(self.iter()).finish()?;
+        formatter.write_str(")")
+    }
+}
+
+impl<'entries, EntryData> DoubleEndedIterator for Drain<'entries, EntryData>
+where
+    EntryData: Debug,
+{
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let next_index = get_next_tail(&mut self.head, &mut self.tail)?;
+        let entry = self
+            .list
+            .remove_entry(next_index)
+            .expect("expected occupied entry");
+
+        self.tail = entry.previous;
+        self.remaining -= 1;
+        Some(entry.value)
+    }
+}
+
+impl<'entries, EntryData> Drop for Drain<'entries, EntryData> {
+    fn drop(&mut self) {
+        self.list.clear();
+    }
+}
+
+impl<'entries, EntryData> ExactSizeIterator for Drain<'entries, EntryData> where EntryData: Debug {}
+
+impl<'entries, EntryData> FusedIterator for Drain<'entries, EntryData> where EntryData: Debug {}
+
+impl<'entries, EntryData> Iterator for Drain<'entries, EntryData>
+where
+    EntryData: Debug,
+{
+    type Item = EntryData;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next_index = get_next_head(&mut self.head, &mut self.tail)?;
+        let entry = self
+            .list
+            .remove_entry(next_index)
+            .expect("expected occupied entry");
+
+        self.head = entry.next;
+        self.remaining -= 1;
+        Some(entry.value)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining, Some(self.remaining))
+    }
+}
+
+pub struct Indices<'entries, EntryData> {
+    entries: &'entries Vec<Entry<EntryData>>,
+    head: Option<usize>,
+    remaining: usize,
+    tail: Option<usize>,
+}
+
+impl<'entries, EntryData> Clone for Indices<'entries, EntryData> {
+    fn clone(&self) -> Self {
+        Indices {
+            entries: self.entries,
+            head: self.head,
+            remaining: self.remaining,
+            tail: self.tail,
+        }
+    }
+}
+
+impl<'entries, EntryData> Debug for Indices<'entries, EntryData>
+where
+    EntryData: Debug,
+{
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        formatter.write_str("Indices(")?;
+        formatter.debug_list().entries(self.clone()).finish()?;
+        formatter.write_str(")")
+    }
+}
+
+impl<'entries, EntryData> DoubleEndedIterator for Indices<'entries, EntryData> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let next_index = get_next_tail(&mut self.head, &mut self.tail)?;
+        let entry = self.entries[next_index].occupied_ref();
+        let index = Index::new(next_index, entry.generation);
+
+        if self.tail.is_some() {
+            self.tail = entry.previous;
+        }
+
+        self.remaining -= 1;
+        Some(index)
+    }
+}
+
+impl<'entries, EntryData> ExactSizeIterator for Indices<'entries, EntryData> {}
+
+impl<'entries, EntryData> FusedIterator for Indices<'entries, EntryData> {}
+
+impl<'entries, EntryData> Iterator for Indices<'entries, EntryData> {
+    type Item = Index<EntryData>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next_index = get_next_head(&mut self.head, &mut self.tail)?;
+        let entry = self.entries[next_index].occupied_ref();
+        let index = Index::new(next_index, entry.generation);
+
+        if self.head.is_some() {
+            self.head = entry.next;
+        }
+
+        self.remaining -= 1;
+        Some(index)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining, Some(self.remaining))
+    }
+}
+
+#[derive(Clone)]
+pub struct IntoIter<EntryData> {
+    head: Option<usize>,
+    list: VecList<EntryData>,
+    remaining: usize,
+    tail: Option<usize>,
+}
+
+impl<EntryData> IntoIter<EntryData> {
+    fn iter(&self) -> Iter<EntryData> {
+        Iter {
+            entries: &self.list.entries,
+            head: self.head,
+            remaining: self.remaining,
+            tail: self.tail,
+        }
+    }
+}
+
+impl<EntryData> Debug for IntoIter<EntryData>
+where
+    EntryData: Debug,
+{
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        formatter.write_str("IntoIter(")?;
+        formatter.debug_list().entries(self.iter()).finish()?;
+        formatter.write_str(")")
+    }
+}
+
+impl<EntryData> DoubleEndedIterator for IntoIter<EntryData> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let next_index = get_next_tail(&mut self.head, &mut self.tail)?;
+        let entry = self
+            .list
+            .remove_entry(next_index)
+            .expect("expected occupied entry");
+
+        self.tail = entry.previous;
+        self.remaining -= 1;
+        Some(entry.value)
+    }
+}
+
+impl<EntryData> ExactSizeIterator for IntoIter<EntryData> {}
+
+impl<EntryData> FusedIterator for IntoIter<EntryData> {}
+
+impl<EntryData> Iterator for IntoIter<EntryData> {
+    type Item = EntryData;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next_index = get_next_head(&mut self.head, &mut self.tail)?;
+        let entry = self
+            .list
+            .remove_entry(next_index)
+            .expect("expected occupied entry");
+
+        self.head = entry.next;
+        self.remaining -= 1;
+        Some(entry.value)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining, Some(self.remaining))
+    }
+}
+
+pub struct Iter<'entries, EntryData> {
+    entries: &'entries Vec<Entry<EntryData>>,
+    head: Option<usize>,
+    remaining: usize,
+    tail: Option<usize>,
+}
+
+impl<'entries, EntryData> Clone for Iter<'entries, EntryData> {
+    fn clone(&self) -> Iter<'entries, EntryData> {
+        Iter {
+            entries: self.entries,
+            head: self.head,
+            remaining: self.remaining,
+            tail: self.tail,
+        }
+    }
+}
+
+impl<'entries, EntryData> Debug for Iter<'entries, EntryData>
+where
+    EntryData: Debug,
+{
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        formatter.write_str("Iter(")?;
+        formatter.debug_list().entries(self.clone()).finish()?;
+        formatter.write_str(")")
+    }
+}
+
+impl<'entries, EntryData> DoubleEndedIterator for Iter<'entries, EntryData> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let next_index = get_next_tail(&mut self.head, &mut self.tail)?;
+        let entry = self.entries[next_index].occupied_ref();
+
+        if self.tail.is_some() {
+            self.tail = entry.previous;
+        }
+
+        self.remaining -= 1;
+        Some(&entry.value)
+    }
+}
+
+impl<'entries, EntryData> ExactSizeIterator for Iter<'entries, EntryData> {}
+
+impl<'entries, EntryData> FusedIterator for Iter<'entries, EntryData> {}
+
+impl<'entries, EntryData> Iterator for Iter<'entries, EntryData> {
+    type Item = &'entries EntryData;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next_index = get_next_head(&mut self.head, &mut self.tail)?;
+        let entry = self.entries[next_index].occupied_ref();
+
+        if self.head.is_some() {
+            self.head = entry.next;
+        }
+
+        self.remaining -= 1;
+        Some(&entry.value)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining, Some(self.remaining))
+    }
+}
+
+pub struct IterMut<'entries, EntryData> {
+    entries: *mut Vec<Entry<EntryData>>,
+    head: Option<usize>,
+    phantom: PhantomData<&'entries mut Vec<Entry<EntryData>>>,
+    remaining: usize,
+    tail: Option<usize>,
+}
+
+impl<'entries, EntryData> IterMut<'entries, EntryData> {
+    pub fn iter(&self) -> Iter<EntryData> {
+        Iter {
+            entries: unsafe { &*self.entries },
+            head: self.head,
+            remaining: self.remaining,
+            tail: self.tail,
+        }
+    }
+}
+
+impl<'entries, EntryData> Debug for IterMut<'entries, EntryData>
+where
+    EntryData: Debug,
+{
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        formatter.write_str("IterMut(")?;
+        formatter.debug_list().entries(self.iter()).finish()?;
+        formatter.write_str(")")
+    }
+}
+
+impl<'entries, EntryData> DoubleEndedIterator for IterMut<'entries, EntryData> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let next_index = get_next_tail(&mut self.head, &mut self.tail)?;
+        let entry = unsafe { &mut (*self.entries)[next_index] }.occupied_mut();
+
+        if self.tail.is_some() {
+            self.tail = entry.previous;
+        }
+
+        self.remaining -= 1;
+        Some(&mut entry.value)
+    }
+}
+
+impl<'entries, EntryData> ExactSizeIterator for IterMut<'entries, EntryData> {}
+
+impl<'entries, EntryData> FusedIterator for IterMut<'entries, EntryData> {}
+
+impl<'entries, EntryData> Iterator for IterMut<'entries, EntryData> {
+    type Item = &'entries mut EntryData;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next_index = get_next_head(&mut self.head, &mut self.tail)?;
+        let entry = unsafe { &mut (*self.entries)[next_index] }.occupied_mut();
+
+        if self.head.is_some() {
+            self.head = entry.next;
+        }
+
+        self.remaining -= 1;
+        Some(&mut entry.value)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining, Some(self.remaining))
+    }
+}
+
+unsafe impl<'entries, EntryData> Send for IterMut<'entries, EntryData> where EntryData: Send {}
+
+unsafe impl<'entries, EntryData> Sync for IterMut<'entries, EntryData> where EntryData: Sync {}
+
+fn get_next_head(head: &mut Option<usize>, tail: &mut Option<usize>) -> Option<usize> {
+    match (*head, *tail) {
+        (Some(head_index), Some(_)) => {
+            if head == tail {
+                *head = None;
+                *tail = None;
+            }
+
+            Some(head_index)
+        }
+        (None, None) => return None,
+        _ => panic!("head and tail must agree on variant"),
+    }
+}
+
+fn get_next_tail(head: &mut Option<usize>, tail: &mut Option<usize>) -> Option<usize> {
+    match (*head, *tail) {
+        (Some(_), Some(tail_index)) => {
+            if head == tail {
+                *head = None;
+                *tail = None;
+            }
+
+            Some(tail_index)
+        }
+        (None, None) => return None,
+        _ => panic!("head and tail must agree on variant"),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_bounds() {
+        fn check_bounds<Type: Send + Sync>() {}
+
+        check_bounds::<VecList<()>>();
+        check_bounds::<Index<()>>();
+        check_bounds::<Drain<()>>();
+        check_bounds::<Indices<()>>();
+        check_bounds::<IntoIter<()>>();
+        check_bounds::<Iter<()>>();
+        check_bounds::<IterMut<()>>();
+    }
+
+    #[test]
+    fn test_drain_debug() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(-1);
+        list.push_back(2);
+        list.push_back(-2);
+
+        let drain = list.drain();
+        assert_eq!(format!("{:?}", drain), "Drain([0, 1, -1, 2, -2])");
+    }
+
+    #[test]
+    fn test_drain_double_ended() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(-1);
+        list.push_back(2);
+        list.push_back(-2);
+
+        let mut drain = list.drain();
+        assert_eq!(drain.next(), Some(0));
+        assert_eq!(drain.next_back(), Some(-2));
+        assert_eq!(drain.next(), Some(1));
+        assert_eq!(drain.next_back(), Some(2));
+        assert_eq!(drain.next(), Some(-1));
+        assert_eq!(drain.next_back(), None);
+    }
+
+    #[test]
+    fn test_drain_empty() {
+        let mut list: VecList<i32> = VecList::new();
+        let mut drain = list.drain();
+        assert_eq!(drain.next(), None);
+    }
+
+    #[test]
+    fn test_drain_fused() {
+        let mut list: VecList<i32> = VecList::new();
+        list.push_back(0);
+        let mut drain = list.drain();
+        assert_eq!(drain.next(), Some(0));
+        assert_eq!(drain.next(), None);
+        assert_eq!(drain.next(), None);
+        assert_eq!(drain.next(), None);
+    }
+
+    #[test]
+    fn test_drain_size_hint() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(-1);
+        list.push_back(2);
+        list.push_back(-2);
+
+        let mut drain = list.drain();
+
+        assert_eq!(drain.size_hint(), (5, Some(5)));
+        drain.next();
+        assert_eq!(drain.size_hint(), (4, Some(4)));
+        drain.next();
+        assert_eq!(drain.size_hint(), (3, Some(3)));
+        drain.next();
+        assert_eq!(drain.size_hint(), (2, Some(2)));
+        drain.next();
+        assert_eq!(drain.size_hint(), (1, Some(1)));
+        drain.next();
+        assert_eq!(drain.size_hint(), (0, Some(0)));
+    }
+
+    #[test]
+    fn test_index_debug() {
+        let mut list = VecList::new();
+        let index = list.push_back(5);
+
+        assert_eq!(
+            format!("{:?}", index),
+            format!("Index(0, {})", index.generation)
+        );
+    }
+
+    #[test]
+    fn test_index_equality() {
+        let mut list = VecList::new();
+        let index_1 = list.push_back(0);
+        let index_2 = list.indices().next().unwrap();
+
+        assert_eq!(index_1, index_2);
+    }
+
+    #[test]
+    fn test_indices_debug() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(-1);
+        list.push_back(2);
+        list.push_back(-2);
+
+        let indices = list.indices();
+        assert_eq!(
+            format!("{:?}", indices),
+            format!(
+                "Indices([Index(0, {}), Index(1, {}), Index(2, {}), Index(3, {}), Index(4, {})])",
+                list.generation, list.generation, list.generation, list.generation, list.generation
+            )
+        );
+    }
+
+    #[test]
+    fn test_indices_double_ended() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(-1);
+        list.push_back(2);
+        list.push_back(-2);
+
+        let mut indices = list.indices();
+        assert_eq!(indices.next().unwrap().index, 0);
+        assert_eq!(indices.next_back().unwrap().index, 4);
+        assert_eq!(indices.next().unwrap().index, 1);
+        assert_eq!(indices.next_back().unwrap().index, 3);
+        assert_eq!(indices.next().unwrap().index, 2);
+        assert_eq!(indices.next_back(), None);
+    }
+
+    #[test]
+    fn test_indices_empty() {
+        let list: VecList<i32> = VecList::new();
+        let mut indices = list.indices();
+        assert_eq!(indices.next(), None);
+    }
+
+    #[test]
+    fn test_indices_fused() {
+        let mut list: VecList<i32> = VecList::new();
+        list.push_back(0);
+        let mut indices = list.indices();
+        assert_eq!(indices.next().unwrap().index, 0);
+        assert_eq!(indices.next(), None);
+        assert_eq!(indices.next(), None);
+        assert_eq!(indices.next(), None);
+    }
+
+    #[test]
+    fn test_indices_size_hint() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(-1);
+        list.push_back(2);
+        list.push_back(-2);
+
+        let mut indices = list.indices();
+
+        assert_eq!(indices.size_hint(), (5, Some(5)));
+        indices.next();
+        assert_eq!(indices.size_hint(), (4, Some(4)));
+        indices.next();
+        assert_eq!(indices.size_hint(), (3, Some(3)));
+        indices.next();
+        assert_eq!(indices.size_hint(), (2, Some(2)));
+        indices.next();
+        assert_eq!(indices.size_hint(), (1, Some(1)));
+        indices.next();
+        assert_eq!(indices.size_hint(), (0, Some(0)));
+    }
+
+    #[test]
+    fn test_into_iter_debug() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(-1);
+        list.push_back(2);
+        list.push_back(-2);
+
+        let iter = list.into_iter();
+        assert_eq!(format!("{:?}", iter), "IntoIter([0, 1, -1, 2, -2])");
+    }
+
+    #[test]
+    fn test_into_iter_double_ended() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(-1);
+        list.push_back(2);
+        list.push_back(-2);
+
+        let mut iter = list.into_iter();
+        assert_eq!(iter.next(), Some(0));
+        assert_eq!(iter.next_back(), Some(-2));
+        assert_eq!(iter.next(), Some(1));
+        assert_eq!(iter.next_back(), Some(2));
+        assert_eq!(iter.next(), Some(-1));
+        assert_eq!(iter.next_back(), None);
+    }
+
+    #[test]
+    fn test_into_iter_empty() {
+        let list: VecList<i32> = VecList::new();
+        let mut iter = list.into_iter();
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn test_into_iter_fused() {
+        let mut list: VecList<i32> = VecList::new();
+        list.push_back(0);
+        let mut iter = list.into_iter();
+        assert_eq!(iter.next(), Some(0));
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn test_into_iter_size_hint() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(-1);
+        list.push_back(2);
+        list.push_back(-2);
+
+        let mut iter = list.into_iter();
+
+        assert_eq!(iter.size_hint(), (5, Some(5)));
+        iter.next();
+        assert_eq!(iter.size_hint(), (4, Some(4)));
+        iter.next();
+        assert_eq!(iter.size_hint(), (3, Some(3)));
+        iter.next();
+        assert_eq!(iter.size_hint(), (2, Some(2)));
+        iter.next();
+        assert_eq!(iter.size_hint(), (1, Some(1)));
+        iter.next();
+        assert_eq!(iter.size_hint(), (0, Some(0)));
+    }
+
+    #[test]
+    fn test_iter_debug() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(-1);
+        list.push_back(2);
+        list.push_back(-2);
+
+        let iter = list.iter();
+        assert_eq!(format!("{:?}", iter), "Iter([0, 1, -1, 2, -2])");
+    }
+
+    #[test]
+    fn test_iter_double_ended() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(-1);
+        list.push_back(2);
+        list.push_back(-2);
+
+        let mut iter = list.iter();
+        assert_eq!(iter.next(), Some(&0));
+        assert_eq!(iter.next_back(), Some(&-2));
+        assert_eq!(iter.next(), Some(&1));
+        assert_eq!(iter.next_back(), Some(&2));
+        assert_eq!(iter.next(), Some(&-1));
+        assert_eq!(iter.next_back(), None);
+    }
+
+    #[test]
+    fn test_iter_empty() {
+        let list: VecList<i32> = VecList::new();
+        let mut iter = list.iter();
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn test_iter_fused() {
+        let mut list: VecList<i32> = VecList::new();
+        list.push_back(0);
+        let mut iter = list.iter();
+        assert_eq!(iter.next(), Some(&0));
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn test_iter_size_hint() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(-1);
+        list.push_back(2);
+        list.push_back(-2);
+
+        let mut iter = list.iter();
+
+        assert_eq!(iter.size_hint(), (5, Some(5)));
+        iter.next();
+        assert_eq!(iter.size_hint(), (4, Some(4)));
+        iter.next();
+        assert_eq!(iter.size_hint(), (3, Some(3)));
+        iter.next();
+        assert_eq!(iter.size_hint(), (2, Some(2)));
+        iter.next();
+        assert_eq!(iter.size_hint(), (1, Some(1)));
+        iter.next();
+        assert_eq!(iter.size_hint(), (0, Some(0)));
+    }
+
+    #[test]
+    fn test_iter_mut_debug() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(-1);
+        list.push_back(2);
+        list.push_back(-2);
+
+        let iter = list.iter_mut();
+        assert_eq!(format!("{:?}", iter), "IterMut([0, 1, -1, 2, -2])");
+    }
+
+    #[test]
+    fn test_iter_mut_double_ended() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(-1);
+        list.push_back(2);
+        list.push_back(-2);
+
+        let mut iter = list.iter_mut();
+        assert_eq!(iter.next(), Some(&mut 0));
+        assert_eq!(iter.next_back(), Some(&mut -2));
+        assert_eq!(iter.next(), Some(&mut 1));
+        assert_eq!(iter.next_back(), Some(&mut 2));
+        assert_eq!(iter.next(), Some(&mut -1));
+        assert_eq!(iter.next_back(), None);
+    }
+
+    #[test]
+    fn test_iter_mut_empty() {
+        let mut list: VecList<i32> = VecList::new();
+        let mut iter = list.iter_mut();
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn test_iter_mut_fused() {
+        let mut list: VecList<i32> = VecList::new();
+        list.push_back(0);
+        let mut iter = list.iter_mut();
+        assert_eq!(iter.next(), Some(&mut 0));
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn test_iter_mut_size_hint() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(-1);
+        list.push_back(2);
+        list.push_back(-2);
+
+        let mut iter = list.iter_mut();
+
+        assert_eq!(iter.size_hint(), (5, Some(5)));
+        iter.next();
+        assert_eq!(iter.size_hint(), (4, Some(4)));
+        iter.next();
+        assert_eq!(iter.size_hint(), (3, Some(3)));
+        iter.next();
+        assert_eq!(iter.size_hint(), (2, Some(2)));
+        iter.next();
+        assert_eq!(iter.size_hint(), (1, Some(1)));
+        iter.next();
+        assert_eq!(iter.size_hint(), (0, Some(0)));
+    }
+
+    #[test]
+    fn test_vec_list_back() {
+        let mut list = VecList::new();
+        assert_eq!(list.back(), None);
+
+        let index_1 = list.push_back(0);
+        assert_eq!(list.back(), Some(&0));
+
+        let index_2 = list.push_back(1);
+        assert_eq!(list.back(), Some(&1));
+
+        list.remove(index_2);
+        assert_eq!(list.back(), Some(&0));
+
+        list.remove(index_1);
+        assert_eq!(list.back(), None);
+    }
+
+    #[test]
+    fn test_vec_list_back_mut() {
+        let mut list = VecList::new();
+        assert_eq!(list.back_mut(), None);
+
+        let index_1 = list.push_back(0);
+        assert_eq!(list.back_mut(), Some(&mut 0));
+
+        let index_2 = list.push_back(1);
+        assert_eq!(list.back_mut(), Some(&mut 1));
+
+        list.remove(index_2);
+        assert_eq!(list.back_mut(), Some(&mut 0));
+
+        list.remove(index_1);
+        assert_eq!(list.back_mut(), None);
+    }
+
+    #[test]
+    fn test_vec_list_capacity() {
+        let list: VecList<i32> = VecList::new();
+        assert_eq!(list.capacity(), 0);
+    }
+
+    #[test]
+    fn test_vec_list_clear() {
+        let mut list = VecList::new();
+        let index = list.push_back(0);
+        list.clear();
+        assert!(list.is_empty());
+        assert_eq!(list.get(index), None);
+    }
+
+    #[test]
+    fn test_vec_list_contains() {
+        let mut list = VecList::new();
+        assert!(!list.contains(&0));
+
+        let index = list.push_back(0);
+        assert!(list.contains(&0));
+
+        list.remove(index);
+        assert!(!list.contains(&0));
+    }
+
+    #[test]
+    fn test_vec_list_drain() {
+        let mut list = VecList::new();
+        list.drain();
+        assert!(list.is_empty());
+
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(-1);
+        list.drain();
+        assert!(list.is_empty());
+    }
+
+    #[test]
+    fn test_vec_list_debug() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(-1);
+        list.push_back(2);
+        list.push_back(-2);
+
+        assert_eq!(format!("{:?}", list), "[0, 1, -1, 2, -2]");
+    }
+
+    #[test]
+    fn test_vec_list_equality() {
+        let mut list_1 = VecList::new();
+        list_1.push_back(0);
+        list_1.push_back(1);
+        list_1.push_back(-1);
+        list_1.push_back(2);
+        list_1.push_back(-2);
+
+        let mut list_2 = list_1.clone();
+        list_2.pop_back();
+        assert_ne!(list_1, list_2);
+
+        list_2.push_back(-2);
+        assert_eq!(list_1, list_2);
+    }
+
+    #[test]
+    fn test_vec_list_extend() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.extend([-1, 2, -2].iter());
+
+        assert_eq!(list, &[0, 1, -1, 2, -2][..]);
+    }
+
+    #[test]
+    fn test_vec_list_from_iterator() {
+        let list = VecList::from_iter([0, 1, -1, 2, -2].iter().cloned());
+        assert_eq!(list, &[0, 1, -1, 2, -2][..]);
+    }
+
+    #[test]
+    fn test_vec_list_front() {
+        let mut list = VecList::new();
+        assert_eq!(list.front(), None);
+
+        let index_1 = list.push_front(0);
+        assert_eq!(list.front(), Some(&0));
+
+        let index_2 = list.push_front(1);
+        assert_eq!(list.front(), Some(&1));
+
+        list.remove(index_2);
+        assert_eq!(list.front(), Some(&0));
+
+        list.remove(index_1);
+        assert_eq!(list.front(), None);
+    }
+
+    #[test]
+    fn test_vec_list_front_mut() {
+        let mut list = VecList::new();
+        assert_eq!(list.front_mut(), None);
+
+        let index_1 = list.push_front(0);
+        assert_eq!(list.front_mut(), Some(&mut 0));
+
+        let index_2 = list.push_front(1);
+        assert_eq!(list.front_mut(), Some(&mut 1));
+
+        list.remove(index_2);
+        assert_eq!(list.front_mut(), Some(&mut 0));
+
+        list.remove(index_1);
+        assert_eq!(list.front_mut(), None);
+    }
+
+    #[test]
+    fn test_vec_list_get() {
+        let mut list = VecList::new();
+        let index = list.push_back(0);
+        assert_eq!(list.get(index), Some(&0));
+        list.remove(index);
+        assert_eq!(list.get(index), None);
+
+        let mut list = VecList::new();
+        let index_1 = list.push_back(0);
+        let index_2 = list.push_back(1);
+        let index_3 = list.push_back(2);
+
+        list.remove(index_1);
+        list.shrink_to_fit();
+        assert_eq!(list.get(index_1), None);
+        assert_eq!(list.get(index_2), None);
+        assert_eq!(list.get(index_3), None);
+    }
+
+    #[test]
+    fn test_vec_list_get_mut() {
+        let mut list = VecList::new();
+        let index = list.push_back(0);
+        assert_eq!(list.get_mut(index), Some(&mut 0));
+        list.remove(index);
+        assert_eq!(list.get_mut(index), None);
+
+        let mut list = VecList::new();
+        let index_1 = list.push_back(0);
+        let index_2 = list.push_back(1);
+        let index_3 = list.push_back(2);
+
+        list.remove(index_1);
+        list.shrink_to_fit();
+        assert_eq!(list.get_mut(index_1), None);
+        assert_eq!(list.get_mut(index_2), None);
+        assert_eq!(list.get_mut(index_3), None);
+    }
+
+    #[test]
+    fn test_vec_list_get_next_index() {
+        let mut list = VecList::new();
+
+        let index = list.push_back(0);
+        assert_eq!(list.get_next_index(index), None);
+
+        list.push_back(1);
+        assert_eq!(list.get_next_index(index).unwrap().index, 1);
+    }
+
+    #[test]
+    fn test_vec_list_get_previous_index() {
+        let mut list = VecList::new();
+
+        let index = list.push_front(0);
+        assert_eq!(list.get_previous_index(index), None);
+
+        list.push_front(1);
+        assert_eq!(list.get_previous_index(index).unwrap().index, 1);
+    }
+
+    #[test]
+    fn test_vec_list_index() {
+        let mut list = VecList::new();
+
+        let index = list.push_back(5);
+        assert_eq!(list[index], 5);
+
+        list[index] = 10;
+        assert_eq!(list[index], 10);
+    }
+
+    #[should_panic]
+    #[test]
+    fn test_vec_list_index_panic() {
+        let mut list = VecList::new();
+        let index = list.push_back(0);
+        list.pop_back();
+        list[index];
+    }
+
+    #[test]
+    fn test_vec_list_indices() {
+        let mut list = VecList::new();
+        let mut iter = list.indices();
+        assert_eq!(iter.next(), None);
+
+        list.push_back(0);
+        let index = list.push_back(1);
+        list.push_back(-1);
+        list.remove(index);
+
+        let mut iter = list.indices();
+        assert_eq!(iter.next().unwrap().index, 0);
+        assert_eq!(iter.next().unwrap().index, 2);
+        assert_eq!(iter.next(), None);
+
+        list.shrink_to_fit();
+
+        let mut iter = list.indices();
+        assert_eq!(iter.next().unwrap().index, 0);
+        assert_eq!(iter.next().unwrap().index, 1);
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn test_vec_list_insert_after() {
+        let mut list = VecList::new();
+        let index_1 = list.push_front(0);
+        let index_2 = list.insert_after(index_1, 1);
+
+        assert_eq!(list.back(), Some(&1));
+        assert_eq!(list.get_previous_index(index_2), Some(index_1));
+        assert_eq!(list.get_next_index(index_1), Some(index_2));
+
+        let index_3 = list.insert_after(index_1, 2);
+
+        assert_eq!(list.get_previous_index(index_3), Some(index_1));
+        assert_eq!(list.get_next_index(index_1), Some(index_3));
+        assert_eq!(list.get_next_index(index_3), Some(index_2));
+    }
+
+    #[should_panic]
+    #[test]
+    fn test_vec_list_insert_after_panic_index_invalidated() {
+        let mut list = VecList::new();
+        let index = list.push_front(0);
+        list.remove(index);
+        list.insert_after(index, 1);
+    }
+
+    #[should_panic]
+    #[test]
+    fn test_vec_list_insert_after_panic_index_out_of_bounds() {
+        let mut list = VecList::new();
+        let index_1 = list.push_back(0);
+        list.push_back(1);
+        let index_2 = list.push_back(2);
+
+        list.remove(index_1);
+        list.shrink_to_fit();
+        list.insert_after(index_2, 3);
+    }
+
+    #[test]
+    fn test_vec_list_insert_before() {
+        let mut list = VecList::new();
+        let index_1 = list.push_back(0);
+        let index_2 = list.insert_before(index_1, 1);
+
+        assert_eq!(list.front(), Some(&1));
+        assert_eq!(list.get_previous_index(index_1), Some(index_2));
+        assert_eq!(list.get_next_index(index_2), Some(index_1));
+
+        let index_3 = list.insert_before(index_1, 2);
+
+        assert_eq!(list.get_previous_index(index_1), Some(index_3));
+        assert_eq!(list.get_next_index(index_3), Some(index_1));
+        assert_eq!(list.get_next_index(index_2), Some(index_3));
+    }
+
+    #[should_panic]
+    #[test]
+    fn test_vec_list_insert_before_panic_index_invalidated() {
+        let mut list = VecList::new();
+        let index = list.push_front(0);
+        list.remove(index);
+        list.insert_before(index, 1);
+    }
+
+    #[should_panic]
+    #[test]
+    fn test_vec_list_insert_before_panic_index_out_of_bounds() {
+        let mut list = VecList::new();
+        let index_1 = list.push_back(0);
+        list.push_back(1);
+        let index_2 = list.push_back(2);
+
+        list.remove(index_1);
+        list.shrink_to_fit();
+        list.insert_before(index_2, 3);
+    }
+
+    #[test]
+    fn test_vec_list_into_iterator() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(-1);
+        list.push_back(2);
+        list.push_back(-2);
+
+        assert_eq!(list.into_iter().collect::<Vec<_>>(), [0, 1, -1, 2, -2]);
+    }
+
+    #[test]
+    fn test_vec_list_is_empty() {
+        let mut list = VecList::new();
+        assert!(list.is_empty());
+        list.push_back(0);
+        assert!(!list.is_empty());
+    }
+
+    #[test]
+    fn test_vec_list_iter() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(2);
+
+        let mut iter = list.iter();
+        assert_eq!(iter.next(), Some(&0));
+        assert_eq!(iter.next(), Some(&1));
+        assert_eq!(iter.next(), Some(&2));
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn test_vec_list_iter_mut() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(2);
+
+        let mut iter = list.iter_mut();
+        let value = iter.next().unwrap();
+        *value = 100;
+
+        assert_eq!(iter.next(), Some(&mut 1));
+        assert_eq!(iter.next(), Some(&mut 2));
+        assert_eq!(iter.next(), None);
+        assert_eq!(list.front(), Some(&100));
+    }
+
+    #[test]
+    fn test_vec_list_len() {
+        let mut list = VecList::new();
+        assert_eq!(list.len(), 0);
+        let index = list.push_back(0);
+        assert_eq!(list.len(), 1);
+        list.remove(index);
+        assert_eq!(list.len(), 0);
+    }
+
+    #[test]
+    fn test_vec_list_new() {
+        let list: VecList<i32> = VecList::new();
+        assert_eq!(list.capacity(), 0);
+        assert_eq!(list.len(), 0);
+    }
+
+    #[test]
+    fn test_vec_list_ordering() {
+        let mut list_1 = VecList::new();
+        list_1.push_back(0);
+        list_1.push_back(1);
+        list_1.push_back(-1);
+        list_1.push_back(2);
+        list_1.push_back(-2);
+
+        let mut list_2 = list_1.clone();
+
+        list_2.push_back(5);
+        assert!(list_1 < list_2);
+
+        list_2.pop_back();
+        list_2.pop_back();
+        assert!(list_1 > list_2);
+
+        list_2.push_back(3);
+        assert!(list_1 < list_2);
+
+        list_2.pop_back();
+        list_2.push_back(-3);
+        assert!(list_1 > list_2);
+    }
+
+    #[test]
+    fn test_vec_list_pop_back() {
+        let mut list = VecList::new();
+        assert_eq!(list.pop_back(), None);
+
+        list.push_back(0);
+        assert_eq!(list.pop_back(), Some(0));
+    }
+
+    #[test]
+    fn test_vec_list_pop_front() {
+        let mut list = VecList::new();
+        assert_eq!(list.pop_front(), None);
+
+        list.push_front(0);
+        assert_eq!(list.pop_front(), Some(0));
+    }
+
+    #[test]
+    fn test_vec_list_push_back() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        assert_eq!(list.back(), Some(&0));
+        list.push_back(1);
+        assert_eq!(list.back(), Some(&1));
+        list.push_back(2);
+        assert_eq!(list.back(), Some(&2));
+    }
+
+    #[test]
+    fn test_vec_list_push_front() {
+        let mut list = VecList::new();
+        list.push_front(0);
+        assert_eq!(list.front(), Some(&0));
+        list.push_front(1);
+        assert_eq!(list.front(), Some(&1));
+        list.push_front(2);
+        assert_eq!(list.front(), Some(&2));
+    }
+
+    #[test]
+    fn test_vec_list_remove() {
+        let mut list = VecList::new();
+        let index = list.push_back(0);
+        assert_eq!(list.remove(index), Some(0));
+        assert_eq!(list.remove(index), None);
+    }
+
+    #[test]
+    fn test_vec_list_reserve() {
+        let mut list: VecList<i32> = VecList::new();
+        assert_eq!(list.capacity(), 0);
+
+        list.reserve(10);
+        let capacity = list.capacity();
+
+        assert!(capacity >= 10);
+        list.reserve(5);
+
+        assert_eq!(list.capacity(), capacity);
+    }
+
+    #[test]
+    fn test_vec_list_retain() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(-1);
+        list.push_back(2);
+        list.push_back(-2);
+
+        list.retain(|&value| value >= 0);
+        assert_eq!(list.into_iter().collect::<Vec<_>>(), [0, 1, 2]);
+    }
+
+    #[test]
+    fn test_vec_list_shrink_to() {
+        let mut list = VecList::new();
+        let index_1 = list.push_back(0);
+        let index_2 = list.push_back(1);
+        let index_3 = list.push_back(2);
+        assert!(list.capacity() >= 3);
+
+        list.remove(index_1);
+        assert!(list.capacity() >= 3);
+
+        let indices = list.indices();
+        assert_eq!(indices.map(|index| index.index).collect::<Vec<_>>(), [1, 2]);
+
+        let map = list.shrink_to(5);
+        assert_eq!(list.capacity(), 5);
+
+        let indices = list.indices();
+        assert_eq!(indices.map(|index| index.index).collect::<Vec<_>>(), [0, 1]);
+
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.get(&index_2).unwrap().index, 0);
+        assert_eq!(map.get(&index_3).unwrap().index, 1);
+    }
+
+    #[should_panic]
+    #[test]
+    fn test_vec_list_shrink_to_panic() {
+        let mut list = VecList::new();
+        list.push_back(0);
+        list.push_back(1);
+        list.push_back(2);
+        list.shrink_to(2);
+    }
+
+    #[test]
+    fn test_vec_list_shrink_to_fit() {
+        let mut list = VecList::new();
+        let index_1 = list.push_back(0);
+        let index_2 = list.push_back(1);
+        let index_3 = list.push_back(2);
+        assert!(list.capacity() >= 3);
+
+        list.remove(index_1);
+        assert!(list.capacity() >= 3);
+
+        let indices = list.indices();
+        assert_eq!(indices.map(|index| index.index).collect::<Vec<_>>(), [1, 2]);
+
+        let map = list.shrink_to_fit();
+        assert_eq!(list.capacity(), 2);
+
+        let indices = list.indices();
+        assert_eq!(indices.map(|index| index.index).collect::<Vec<_>>(), [0, 1]);
+
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.get(&index_2).unwrap().index, 0);
+        assert_eq!(map.get(&index_3).unwrap().index, 1);
+    }
+
+    #[test]
+    fn test_vec_list_with_capacity() {
+        let list: VecList<i32> = VecList::with_capacity(10);
+        assert_eq!(list.capacity(), 10);
+    }
+}
