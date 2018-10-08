@@ -890,8 +890,7 @@ impl<EntryData> VecList<EntryData> {
     /// Reorganizes the existing values to ensure maximum cache locality and shrinks the list such
     /// that the capacity is exactly [`minimum_capacity`].
     ///
-    /// Despite the name implying that the list will "shrink", this function can actually increase
-    /// the capacity of the list.
+    /// This function can be used to actually increase the capacity of the list.
     ///
     /// Complexity: O(n)
     ///
@@ -912,7 +911,7 @@ impl<EntryData> VecList<EntryData> {
     ///
     /// assert!(list.capacity() >= 3);
     ///
-    /// let mut map = list.shrink_to(list.len() + 5);
+    /// let mut map = list.pack_to(list.len() + 5);
     /// assert_eq!(list.capacity(), 7);
     /// assert_eq!(map.len(), 2);
     ///
@@ -927,7 +926,7 @@ impl<EntryData> VecList<EntryData> {
     /// assert_eq!(iter.next(), Some(&10));
     /// assert_eq!(iter.next(), None);
     /// ```
-    pub fn shrink_to(
+    pub fn pack_to(
         &mut self,
         minimum_capacity: usize,
     ) -> HashMap<Index<EntryData>, Index<EntryData>> {
@@ -975,7 +974,7 @@ impl<EntryData> VecList<EntryData> {
     /// Reorganizes the existing values to ensure maximum cache locality and shrinks the list such
     /// that no additional capacity exists.
     ///
-    /// This is equivalent to calling [`VecList::shrink_to`] with the current length.
+    /// This is equivalent to calling [`VecList::pack_to`] with the current length.
     ///
     /// Complexity: O(n)
     ///
@@ -992,7 +991,7 @@ impl<EntryData> VecList<EntryData> {
     ///
     /// assert!(list.capacity() >= 3);
     ///
-    /// let mut map = list.shrink_to_fit();
+    /// let mut map = list.pack_to_fit();
     /// assert_eq!(list.capacity(), 2);
     /// assert_eq!(map.len(), 2);
     ///
@@ -1007,11 +1006,11 @@ impl<EntryData> VecList<EntryData> {
     /// assert_eq!(iter.next(), Some(&10));
     /// assert_eq!(iter.next(), None);
     /// ```
-    pub fn shrink_to_fit(&mut self) -> HashMap<Index<EntryData>, Index<EntryData>>
+    pub fn pack_to_fit(&mut self) -> HashMap<Index<EntryData>, Index<EntryData>>
     where
         EntryData: Debug,
     {
-        self.shrink_to(self.length)
+        self.pack_to(self.length)
     }
 
     /// Creates a new list with the given capacity.
@@ -1455,13 +1454,19 @@ where
     EntryData: Debug,
 {
     fn next_back(&mut self) -> Option<Self::Item> {
-        let next_index = get_next_tail(&mut self.head, &mut self.tail)?;
+        let next_index = self.tail?;
         let entry = self
             .list
             .remove_entry(next_index)
             .expect("expected occupied entry");
 
-        self.tail = entry.previous;
+        if self.head == self.tail {
+            self.head = None;
+            self.tail = None;
+        } else {
+            self.tail = entry.previous;
+        }
+
         self.remaining -= 1;
         Some(entry.value)
     }
@@ -1484,13 +1489,19 @@ where
     type Item = EntryData;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let next_index = get_next_head(&mut self.head, &mut self.tail)?;
+        let next_index = self.head?;
         let entry = self
             .list
             .remove_entry(next_index)
             .expect("expected occupied entry");
 
-        self.head = entry.next;
+        if self.head == self.tail {
+            self.head = None;
+            self.tail = None;
+        } else {
+            self.head = entry.next;
+        }
+
         self.remaining -= 1;
         Some(entry.value)
     }
@@ -1539,11 +1550,14 @@ where
 
 impl<'entries, EntryData> DoubleEndedIterator for Indices<'entries, EntryData> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        let next_index = get_next_tail(&mut self.head, &mut self.tail)?;
+        let next_index = self.tail?;
         let entry = self.entries[next_index].occupied_ref();
         let index = Index::new(next_index, entry.generation);
 
-        if self.tail.is_some() {
+        if self.head == self.tail {
+            self.head = None;
+            self.tail = None;
+        } else {
             self.tail = entry.previous;
         }
 
@@ -1560,11 +1574,14 @@ impl<'entries, EntryData> Iterator for Indices<'entries, EntryData> {
     type Item = Index<EntryData>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let next_index = get_next_head(&mut self.head, &mut self.tail)?;
+        let next_index = self.head?;
         let entry = self.entries[next_index].occupied_ref();
         let index = Index::new(next_index, entry.generation);
 
-        if self.head.is_some() {
+        if self.head == self.tail {
+            self.head = None;
+            self.tail = None;
+        } else {
             self.head = entry.next;
         }
 
@@ -1618,13 +1635,19 @@ where
 
 impl<EntryData> DoubleEndedIterator for IntoIter<EntryData> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        let next_index = get_next_tail(&mut self.head, &mut self.tail)?;
+        let next_index = self.tail?;
         let entry = self
             .list
             .remove_entry(next_index)
             .expect("expected occupied entry");
 
-        self.tail = entry.previous;
+        if self.head == self.tail {
+            self.head = None;
+            self.tail = None;
+        } else {
+            self.tail = entry.previous;
+        }
+
         self.remaining -= 1;
         Some(entry.value)
     }
@@ -1638,13 +1661,19 @@ impl<EntryData> Iterator for IntoIter<EntryData> {
     type Item = EntryData;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let next_index = get_next_head(&mut self.head, &mut self.tail)?;
+        let next_index = self.head?;
         let entry = self
             .list
             .remove_entry(next_index)
             .expect("expected occupied entry");
 
-        self.head = entry.next;
+        if self.head == self.tail {
+            self.head = None;
+            self.tail = None;
+        } else {
+            self.head = entry.next;
+        }
+
         self.remaining -= 1;
         Some(entry.value)
     }
@@ -1693,10 +1722,13 @@ where
 
 impl<'entries, EntryData> DoubleEndedIterator for Iter<'entries, EntryData> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        let next_index = get_next_tail(&mut self.head, &mut self.tail)?;
+        let next_index = self.tail?;
         let entry = self.entries[next_index].occupied_ref();
 
-        if self.tail.is_some() {
+        if self.head == self.tail {
+            self.head = None;
+            self.tail = None;
+        } else {
             self.tail = entry.previous;
         }
 
@@ -1713,10 +1745,13 @@ impl<'entries, EntryData> Iterator for Iter<'entries, EntryData> {
     type Item = &'entries EntryData;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let next_index = get_next_head(&mut self.head, &mut self.tail)?;
+        let next_index = self.head?;
         let entry = self.entries[next_index].occupied_ref();
 
-        if self.head.is_some() {
+        if self.head == self.tail {
+            self.head = None;
+            self.tail = None;
+        } else {
             self.head = entry.next;
         }
 
@@ -1772,10 +1807,13 @@ where
 
 impl<'entries, EntryData> DoubleEndedIterator for IterMut<'entries, EntryData> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        let next_index = get_next_tail(&mut self.head, &mut self.tail)?;
+        let next_index = self.tail?;
         let entry = unsafe { &mut (*self.entries)[next_index] }.occupied_mut();
 
-        if self.tail.is_some() {
+        if self.head == self.tail {
+            self.head = None;
+            self.tail = None;
+        } else {
             self.tail = entry.previous;
         }
 
@@ -1792,10 +1830,13 @@ impl<'entries, EntryData> Iterator for IterMut<'entries, EntryData> {
     type Item = &'entries mut EntryData;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let next_index = get_next_head(&mut self.head, &mut self.tail)?;
+        let next_index = self.head?;
         let entry = unsafe { &mut (*self.entries)[next_index] }.occupied_mut();
 
-        if self.head.is_some() {
+        if self.head == self.tail {
+            self.head = None;
+            self.tail = None;
+        } else {
             self.head = entry.next;
         }
 
@@ -1811,40 +1852,6 @@ impl<'entries, EntryData> Iterator for IterMut<'entries, EntryData> {
 unsafe impl<'entries, EntryData> Send for IterMut<'entries, EntryData> where EntryData: Send {}
 
 unsafe impl<'entries, EntryData> Sync for IterMut<'entries, EntryData> where EntryData: Sync {}
-
-/// Iterator helper function that will get the next head index and update the current head/tail if
-/// appropriate.
-fn get_next_head(head: &mut Option<usize>, tail: &mut Option<usize>) -> Option<usize> {
-    match (*head, *tail) {
-        (Some(head_index), Some(_)) => {
-            if head == tail {
-                *head = None;
-                *tail = None;
-            }
-
-            Some(head_index)
-        }
-        (None, None) => None,
-        _ => panic!("head and tail must agree on variant"),
-    }
-}
-
-/// Iterator helper function that will get the next tail index and update the current head/tail if
-/// appropriate.
-fn get_next_tail(head: &mut Option<usize>, tail: &mut Option<usize>) -> Option<usize> {
-    match (*head, *tail) {
-        (Some(_), Some(tail_index)) => {
-            if head == tail {
-                *head = None;
-                *tail = None;
-            }
-
-            Some(tail_index)
-        }
-        (None, None) => None,
-        _ => panic!("head and tail must agree on variant"),
-    }
-}
 
 #[cfg(test)]
 mod test {
@@ -2425,7 +2432,7 @@ mod test {
         let index_3 = list.push_back(2);
 
         list.remove(index_1);
-        list.shrink_to_fit();
+        list.pack_to_fit();
         assert_eq!(list.get(index_1), None);
         assert_eq!(list.get(index_2), None);
         assert_eq!(list.get(index_3), None);
@@ -2445,7 +2452,7 @@ mod test {
         let index_3 = list.push_back(2);
 
         list.remove(index_1);
-        list.shrink_to_fit();
+        list.pack_to_fit();
         assert_eq!(list.get_mut(index_1), None);
         assert_eq!(list.get_mut(index_2), None);
         assert_eq!(list.get_mut(index_3), None);
@@ -2509,7 +2516,7 @@ mod test {
         assert_eq!(iter.next().unwrap().index, 2);
         assert_eq!(iter.next(), None);
 
-        list.shrink_to_fit();
+        list.pack_to_fit();
 
         let mut iter = list.indices();
         assert_eq!(iter.next().unwrap().index, 0);
@@ -2552,7 +2559,7 @@ mod test {
         let index_2 = list.push_back(2);
 
         list.remove(index_1);
-        list.shrink_to_fit();
+        list.pack_to_fit();
         list.insert_after(index_2, 3);
     }
 
@@ -2591,7 +2598,7 @@ mod test {
         let index_2 = list.push_back(2);
 
         list.remove(index_1);
-        list.shrink_to_fit();
+        list.pack_to_fit();
         list.insert_before(index_2, 3);
     }
 
@@ -2765,7 +2772,7 @@ mod test {
     }
 
     #[test]
-    fn test_vec_list_shrink_to() {
+    fn test_vec_list_pack_to() {
         let mut list = VecList::new();
         let index_1 = list.push_back(0);
         let index_2 = list.push_back(1);
@@ -2778,7 +2785,7 @@ mod test {
         let indices = list.indices();
         assert_eq!(indices.map(|index| index.index).collect::<Vec<_>>(), [1, 2]);
 
-        let map = list.shrink_to(5);
+        let map = list.pack_to(5);
         assert_eq!(list.capacity(), 5);
 
         let indices = list.indices();
@@ -2791,16 +2798,16 @@ mod test {
 
     #[should_panic]
     #[test]
-    fn test_vec_list_shrink_to_panic() {
+    fn test_vec_list_pack_to_panic() {
         let mut list = VecList::new();
         list.push_back(0);
         list.push_back(1);
         list.push_back(2);
-        list.shrink_to(2);
+        list.pack_to(2);
     }
 
     #[test]
-    fn test_vec_list_shrink_to_fit() {
+    fn test_vec_list_pack_to_fit() {
         let mut list = VecList::new();
         let index_1 = list.push_back(0);
         let index_2 = list.push_back(1);
@@ -2813,7 +2820,7 @@ mod test {
         let indices = list.indices();
         assert_eq!(indices.map(|index| index.index).collect::<Vec<_>>(), [1, 2]);
 
-        let map = list.shrink_to_fit();
+        let map = list.pack_to_fit();
         assert_eq!(list.capacity(), 2);
 
         let indices = list.indices();
