@@ -510,16 +510,13 @@ impl<EntryData> VecList<EntryData> {
                 index
             }
             None => {
-                let index = self.entries.len();
-
                 self.entries.push(Occupied(OccupiedEntry::new(
                     self.generation,
                     previous,
                     next,
                     value,
                 )));
-
-                index
+                self.entries.len() - 1
             }
         }
     }
@@ -632,6 +629,132 @@ impl<EntryData> VecList<EntryData> {
     /// ```
     pub fn new() -> Self {
         VecList::default()
+    }
+
+    /// Reorganizes the existing values to ensure maximum cache locality and shrinks the list such
+    /// that the capacity is exactly [`minimum_capacity`].
+    ///
+    /// This function can be used to actually increase the capacity of the list.
+    ///
+    /// Complexity: O(n)
+    ///
+    /// # Panics
+    ///
+    /// Panics if the given minimum capacity is less than the current length of the list.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// let index_1 = list.push_back(5);
+    /// let index_2 = list.push_back(10);
+    /// let index_3 = list.push_front(100);
+    /// list.remove(index_1);
+    ///
+    /// assert!(list.capacity() >= 3);
+    ///
+    /// let mut map = list.pack_to(list.len() + 5);
+    /// assert_eq!(list.capacity(), 7);
+    /// assert_eq!(map.len(), 2);
+    ///
+    /// let index_2 = map.remove(&index_2).unwrap();
+    /// let index_3 = map.remove(&index_3).unwrap();
+    ///
+    /// assert_eq!(list.get(index_2), Some(&10));
+    /// assert_eq!(list.get(index_3), Some(&100));
+    ///
+    /// let mut iter = list.iter();
+    /// assert_eq!(iter.next(), Some(&100));
+    /// assert_eq!(iter.next(), Some(&10));
+    /// assert_eq!(iter.next(), None);
+    /// ```
+    pub fn pack_to(
+        &mut self,
+        minimum_capacity: usize,
+    ) -> HashMap<Index<EntryData>, Index<EntryData>> {
+        assert!(
+            minimum_capacity >= self.length,
+            "cannot shrink to capacity lower than current length"
+        );
+
+        let mut count = 0;
+        let mut entries = Vec::with_capacity(minimum_capacity);
+        let generation = thread_rng().gen();
+        let length = self.length;
+        let mut map = HashMap::with_capacity(length);
+        let mut next_index = self.head;
+
+        while let Some(index) = next_index {
+            let mut entry = self.remove_entry(index).expect("expected occupied entry");
+            next_index = entry.next;
+            map.insert(
+                Index::new(index, entry.generation),
+                Index::new(count, generation),
+            );
+
+            entry.generation = generation;
+            entry.previous = if count > 0 { Some(count - 1) } else { None };
+            entry.next = if count < length - 1 {
+                Some(count + 1)
+            } else {
+                None
+            };
+
+            entries.push(Entry::Occupied(entry));
+            count += 1;
+        }
+
+        self.entries = entries;
+        self.generation = generation;
+        self.head = Some(0);
+        self.length = length;
+        self.tail = Some(length - 1);
+        self.vacant_head = None;
+        map
+    }
+
+    /// Reorganizes the existing values to ensure maximum cache locality and shrinks the list such
+    /// that no additional capacity exists.
+    ///
+    /// This is equivalent to calling [`VecList::pack_to`] with the current length.
+    ///
+    /// Complexity: O(n)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use dlv_list::VecList;
+    ///
+    /// let mut list = VecList::new();
+    /// let index_1 = list.push_back(5);
+    /// let index_2 = list.push_back(10);
+    /// let index_3 = list.push_front(100);
+    /// list.remove(index_1);
+    ///
+    /// assert!(list.capacity() >= 3);
+    ///
+    /// let mut map = list.pack_to_fit();
+    /// assert_eq!(list.capacity(), 2);
+    /// assert_eq!(map.len(), 2);
+    ///
+    /// let index_2 = map.remove(&index_2).unwrap();
+    /// let index_3 = map.remove(&index_3).unwrap();
+    ///
+    /// assert_eq!(list.get(index_2), Some(&10));
+    /// assert_eq!(list.get(index_3), Some(&100));
+    ///
+    /// let mut iter = list.iter();
+    /// assert_eq!(iter.next(), Some(&100));
+    /// assert_eq!(iter.next(), Some(&10));
+    /// assert_eq!(iter.next(), None);
+    /// ```
+    pub fn pack_to_fit(&mut self) -> HashMap<Index<EntryData>, Index<EntryData>>
+    where
+        EntryData: Debug,
+    {
+        self.pack_to(self.length)
     }
 
     /// Removes and returns the value at the back of the list, if it exists.
@@ -885,132 +1008,6 @@ impl<EntryData> VecList<EntryData> {
                 self.remove_entry(index);
             }
         }
-    }
-
-    /// Reorganizes the existing values to ensure maximum cache locality and shrinks the list such
-    /// that the capacity is exactly [`minimum_capacity`].
-    ///
-    /// This function can be used to actually increase the capacity of the list.
-    ///
-    /// Complexity: O(n)
-    ///
-    /// # Panics
-    ///
-    /// Panics if the given minimum capacity is less than the current length of the list.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use dlv_list::VecList;
-    ///
-    /// let mut list = VecList::new();
-    /// let index_1 = list.push_back(5);
-    /// let index_2 = list.push_back(10);
-    /// let index_3 = list.push_front(100);
-    /// list.remove(index_1);
-    ///
-    /// assert!(list.capacity() >= 3);
-    ///
-    /// let mut map = list.pack_to(list.len() + 5);
-    /// assert_eq!(list.capacity(), 7);
-    /// assert_eq!(map.len(), 2);
-    ///
-    /// let index_2 = map.remove(&index_2).unwrap();
-    /// let index_3 = map.remove(&index_3).unwrap();
-    ///
-    /// assert_eq!(list.get(index_2), Some(&10));
-    /// assert_eq!(list.get(index_3), Some(&100));
-    ///
-    /// let mut iter = list.iter();
-    /// assert_eq!(iter.next(), Some(&100));
-    /// assert_eq!(iter.next(), Some(&10));
-    /// assert_eq!(iter.next(), None);
-    /// ```
-    pub fn pack_to(
-        &mut self,
-        minimum_capacity: usize,
-    ) -> HashMap<Index<EntryData>, Index<EntryData>> {
-        assert!(
-            minimum_capacity >= self.length,
-            "cannot shrink to capacity lower than current length"
-        );
-
-        let mut count = 0;
-        let mut entries = Vec::with_capacity(minimum_capacity);
-        let generation = thread_rng().gen();
-        let length = self.length;
-        let mut map = HashMap::with_capacity(length);
-        let mut next_index = self.head;
-
-        while let Some(index) = next_index {
-            let mut entry = self.remove_entry(index).expect("expected occupied entry");
-            next_index = entry.next;
-            map.insert(
-                Index::new(index, entry.generation),
-                Index::new(count, generation),
-            );
-
-            entry.generation = generation;
-            entry.previous = if count > 0 { Some(count - 1) } else { None };
-            entry.next = if count < length - 1 {
-                Some(count + 1)
-            } else {
-                None
-            };
-
-            entries.push(Entry::Occupied(entry));
-            count += 1;
-        }
-
-        self.entries = entries;
-        self.generation = generation;
-        self.head = Some(0);
-        self.length = length;
-        self.tail = Some(length - 1);
-        self.vacant_head = None;
-        map
-    }
-
-    /// Reorganizes the existing values to ensure maximum cache locality and shrinks the list such
-    /// that no additional capacity exists.
-    ///
-    /// This is equivalent to calling [`VecList::pack_to`] with the current length.
-    ///
-    /// Complexity: O(n)
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use dlv_list::VecList;
-    ///
-    /// let mut list = VecList::new();
-    /// let index_1 = list.push_back(5);
-    /// let index_2 = list.push_back(10);
-    /// let index_3 = list.push_front(100);
-    /// list.remove(index_1);
-    ///
-    /// assert!(list.capacity() >= 3);
-    ///
-    /// let mut map = list.pack_to_fit();
-    /// assert_eq!(list.capacity(), 2);
-    /// assert_eq!(map.len(), 2);
-    ///
-    /// let index_2 = map.remove(&index_2).unwrap();
-    /// let index_3 = map.remove(&index_3).unwrap();
-    ///
-    /// assert_eq!(list.get(index_2), Some(&10));
-    /// assert_eq!(list.get(index_3), Some(&100));
-    ///
-    /// let mut iter = list.iter();
-    /// assert_eq!(iter.next(), Some(&100));
-    /// assert_eq!(iter.next(), Some(&10));
-    /// assert_eq!(iter.next(), None);
-    /// ```
-    pub fn pack_to_fit(&mut self) -> HashMap<Index<EntryData>, Index<EntryData>>
-    where
-        EntryData: Debug,
-    {
-        self.pack_to(self.length)
     }
 
     /// Creates a new list with the given capacity.
@@ -1306,7 +1303,7 @@ enum Entry<EntryData> {
     /// A vacant entry is one that can be reused.
     Vacant(VacantEntry),
 }
-
+use std::hint::unreachable_unchecked;
 impl<EntryData> Entry<EntryData> {
     /// Returns the occupied entry by moving it out of the entry.
     ///
@@ -1332,7 +1329,8 @@ impl<EntryData> Entry<EntryData> {
 
         match self {
             Occupied(entry) => entry,
-            Vacant(_) => panic!("expected occupied entry"),
+            _ => unsafe { unreachable_unchecked() },
+            // Vacant(_) => panic!("expected occupied entry"),
         }
     }
 
@@ -1454,21 +1452,19 @@ where
     EntryData: Debug,
 {
     fn next_back(&mut self) -> Option<Self::Item> {
-        let next_index = self.tail?;
-        let entry = self
-            .list
-            .remove_entry(next_index)
-            .expect("expected occupied entry");
-
-        if self.head == self.tail {
-            self.head = None;
-            self.tail = None;
+        if self.remaining == 0 {
+            None
         } else {
-            self.tail = entry.previous;
+            self.tail.map(|index| {
+                let entry = self
+                    .list
+                    .remove_entry(index)
+                    .expect("expected occupied entry");
+                self.tail = entry.previous;
+                self.remaining -= 1;
+                entry.value
+            })
         }
-
-        self.remaining -= 1;
-        Some(entry.value)
     }
 }
 
@@ -1489,21 +1485,19 @@ where
     type Item = EntryData;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let next_index = self.head?;
-        let entry = self
-            .list
-            .remove_entry(next_index)
-            .expect("expected occupied entry");
-
-        if self.head == self.tail {
-            self.head = None;
-            self.tail = None;
+        if self.remaining == 0 {
+            None
         } else {
-            self.head = entry.next;
+            self.head.map(|index| {
+                let entry = self
+                    .list
+                    .remove_entry(index)
+                    .expect("expected occupied entry");
+                self.head = entry.next;
+                self.remaining -= 1;
+                entry.value
+            })
         }
-
-        self.remaining -= 1;
-        Some(entry.value)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -1550,19 +1544,17 @@ where
 
 impl<'entries, EntryData> DoubleEndedIterator for Indices<'entries, EntryData> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        let next_index = self.tail?;
-        let entry = self.entries[next_index].occupied_ref();
-        let index = Index::new(next_index, entry.generation);
-
-        if self.head == self.tail {
-            self.head = None;
-            self.tail = None;
+        if self.remaining == 0 {
+            None
         } else {
-            self.tail = entry.previous;
+            self.tail.map(|index| {
+                let entry = self.entries[index].occupied_ref();
+                let index = Index::new(index, entry.generation);
+                self.tail = entry.previous;
+                self.remaining -= 1;
+                index
+            })
         }
-
-        self.remaining -= 1;
-        Some(index)
     }
 }
 
@@ -1574,19 +1566,17 @@ impl<'entries, EntryData> Iterator for Indices<'entries, EntryData> {
     type Item = Index<EntryData>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let next_index = self.head?;
-        let entry = self.entries[next_index].occupied_ref();
-        let index = Index::new(next_index, entry.generation);
-
-        if self.head == self.tail {
-            self.head = None;
-            self.tail = None;
+        if self.remaining == 0 {
+            None
         } else {
-            self.head = entry.next;
+            self.head.map(|index| {
+                let entry = self.entries[index].occupied_ref();
+                let index = Index::new(index, entry.generation);
+                self.head = entry.next;
+                self.remaining -= 1;
+                index
+            })
         }
-
-        self.remaining -= 1;
-        Some(index)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -1635,21 +1625,19 @@ where
 
 impl<EntryData> DoubleEndedIterator for IntoIter<EntryData> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        let next_index = self.tail?;
-        let entry = self
-            .list
-            .remove_entry(next_index)
-            .expect("expected occupied entry");
-
-        if self.head == self.tail {
-            self.head = None;
-            self.tail = None;
+        if self.remaining == 0 {
+            None
         } else {
-            self.tail = entry.previous;
+            self.tail.map(|index| {
+                let entry = self
+                    .list
+                    .remove_entry(index)
+                    .expect("expected occupied entry");
+                self.tail = entry.previous;
+                self.remaining -= 1;
+                entry.value
+            })
         }
-
-        self.remaining -= 1;
-        Some(entry.value)
     }
 }
 
@@ -1661,21 +1649,19 @@ impl<EntryData> Iterator for IntoIter<EntryData> {
     type Item = EntryData;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let next_index = self.head?;
-        let entry = self
-            .list
-            .remove_entry(next_index)
-            .expect("expected occupied entry");
-
-        if self.head == self.tail {
-            self.head = None;
-            self.tail = None;
+        if self.remaining == 0 {
+            None
         } else {
-            self.head = entry.next;
+            self.head.map(|index| {
+                let entry = self
+                    .list
+                    .remove_entry(index)
+                    .expect("expected occupied entry");
+                self.head = entry.next;
+                self.remaining -= 1;
+                entry.value
+            })
         }
-
-        self.remaining -= 1;
-        Some(entry.value)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -1722,18 +1708,16 @@ where
 
 impl<'entries, EntryData> DoubleEndedIterator for Iter<'entries, EntryData> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        let next_index = self.tail?;
-        let entry = self.entries[next_index].occupied_ref();
-
-        if self.head == self.tail {
-            self.head = None;
-            self.tail = None;
+        if self.remaining == 0 {
+            None
         } else {
-            self.tail = entry.previous;
+            self.tail.map(|index| {
+                let entry = self.entries[index].occupied_ref();
+                self.tail = entry.previous;
+                self.remaining -= 1;
+                &entry.value
+            })
         }
-
-        self.remaining -= 1;
-        Some(&entry.value)
     }
 }
 
@@ -1745,18 +1729,16 @@ impl<'entries, EntryData> Iterator for Iter<'entries, EntryData> {
     type Item = &'entries EntryData;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let next_index = self.head?;
-        let entry = self.entries[next_index].occupied_ref();
-
-        if self.head == self.tail {
-            self.head = None;
-            self.tail = None;
+        if self.remaining == 0 {
+            None
         } else {
-            self.head = entry.next;
+            self.head.map(|index| {
+                let entry = self.entries[index].occupied_ref();
+                self.head = entry.next;
+                self.remaining -= 1;
+                &entry.value
+            })
         }
-
-        self.remaining -= 1;
-        Some(&entry.value)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -1807,18 +1789,16 @@ where
 
 impl<'entries, EntryData> DoubleEndedIterator for IterMut<'entries, EntryData> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        let next_index = self.tail?;
-        let entry = unsafe { &mut (*self.entries)[next_index] }.occupied_mut();
-
-        if self.head == self.tail {
-            self.head = None;
-            self.tail = None;
+        if self.remaining == 0 {
+            None
         } else {
-            self.tail = entry.previous;
+            self.tail.map(|index| {
+                let entry = unsafe { &mut (*self.entries)[index] }.occupied_mut();
+                self.tail = entry.previous;
+                self.remaining -= 1;
+                &mut entry.value
+            })
         }
-
-        self.remaining -= 1;
-        Some(&mut entry.value)
     }
 }
 
@@ -1830,18 +1810,16 @@ impl<'entries, EntryData> Iterator for IterMut<'entries, EntryData> {
     type Item = &'entries mut EntryData;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let next_index = self.head?;
-        let entry = unsafe { &mut (*self.entries)[next_index] }.occupied_mut();
-
-        if self.head == self.tail {
-            self.head = None;
-            self.tail = None;
+        if self.remaining == 0 {
+            None
         } else {
-            self.head = entry.next;
+            self.head.map(|index| {
+                let entry = unsafe { &mut (*self.entries)[index] }.occupied_mut();
+                self.head = entry.next;
+                self.remaining -= 1;
+                &mut entry.value
+            })
         }
-
-        self.remaining -= 1;
-        Some(&mut entry.value)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
