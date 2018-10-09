@@ -1303,7 +1303,7 @@ enum Entry<EntryData> {
     /// A vacant entry is one that can be reused.
     Vacant(VacantEntry),
 }
-use std::hint::unreachable_unchecked;
+
 impl<EntryData> Entry<EntryData> {
     /// Returns the occupied entry by moving it out of the entry.
     ///
@@ -1329,8 +1329,7 @@ impl<EntryData> Entry<EntryData> {
 
         match self {
             Occupied(entry) => entry,
-            _ => unsafe { unreachable_unchecked() },
-            // Vacant(_) => panic!("expected occupied entry"),
+            Vacant(_) => panic!("expected occupied entry"),
         }
     }
 
