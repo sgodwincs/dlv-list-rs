@@ -1425,7 +1425,7 @@ pub struct Drain<'entries, EntryData> {
 
 impl<'entries, EntryData> Drain<'entries, EntryData> {
     /// Creates an iterator that yields immutable references to entries in the list.
-    fn iter(&self) -> Iter<EntryData> {
+    pub fn iter(&self) -> Iter<EntryData> {
         Iter {
             entries: &self.list.entries,
             head: self.head,
@@ -1601,7 +1601,7 @@ pub struct IntoIter<EntryData> {
 
 impl<EntryData> IntoIter<EntryData> {
     /// Creates an iterator that yields immutable references to entries in the list.
-    fn iter(&self) -> Iter<EntryData> {
+    pub fn iter(&self) -> Iter<EntryData> {
         Iter {
             entries: &self.list.entries,
             head: self.head,
@@ -1765,7 +1765,7 @@ pub struct IterMut<'entries, EntryData> {
 
 impl<'entries, EntryData> IterMut<'entries, EntryData> {
     /// Creates an iterator that yields immutable references to entries in the list.
-    fn iter(&self) -> Iter<EntryData> {
+    pub fn iter(&self) -> Iter<EntryData> {
         Iter {
             entries: unsafe { &*self.entries },
             head: self.head,
