@@ -1423,7 +1423,7 @@ pub struct Drain<'entries, EntryData> {
     tail: Option<usize>,
 }
 
-impl<'entries, EntryData> Drain<'entries, EntryData> {
+impl<EntryData> Drain<'_, EntryData> {
     /// Creates an iterator that yields immutable references to entries in the list.
     pub fn iter(&self) -> Iter<EntryData> {
         Iter {
@@ -1435,7 +1435,7 @@ impl<'entries, EntryData> Drain<'entries, EntryData> {
     }
 }
 
-impl<'entries, EntryData> Debug for Drain<'entries, EntryData>
+impl<EntryData> Debug for Drain<'_, EntryData>
 where
     EntryData: Debug,
 {
@@ -1446,7 +1446,7 @@ where
     }
 }
 
-impl<'entries, EntryData> DoubleEndedIterator for Drain<'entries, EntryData>
+impl<EntryData> DoubleEndedIterator for Drain<'_, EntryData>
 where
     EntryData: Debug,
 {
@@ -1467,17 +1467,17 @@ where
     }
 }
 
-impl<'entries, EntryData> Drop for Drain<'entries, EntryData> {
+impl<EntryData> Drop for Drain<'_, EntryData> {
     fn drop(&mut self) {
         self.list.clear();
     }
 }
 
-impl<'entries, EntryData> ExactSizeIterator for Drain<'entries, EntryData> where EntryData: Debug {}
+impl<EntryData> ExactSizeIterator for Drain<'_, EntryData> where EntryData: Debug {}
 
-impl<'entries, EntryData> FusedIterator for Drain<'entries, EntryData> where EntryData: Debug {}
+impl<EntryData> FusedIterator for Drain<'_, EntryData> where EntryData: Debug {}
 
-impl<'entries, EntryData> Iterator for Drain<'entries, EntryData>
+impl<EntryData> Iterator for Drain<'_, EntryData>
 where
     EntryData: Debug,
 {
@@ -1519,7 +1519,7 @@ pub struct Indices<'entries, EntryData> {
     tail: Option<usize>,
 }
 
-impl<'entries, EntryData> Clone for Indices<'entries, EntryData> {
+impl<EntryData> Clone for Indices<'_, EntryData> {
     fn clone(&self) -> Self {
         Indices {
             entries: self.entries,
@@ -1530,7 +1530,7 @@ impl<'entries, EntryData> Clone for Indices<'entries, EntryData> {
     }
 }
 
-impl<'entries, EntryData> Debug for Indices<'entries, EntryData>
+impl<EntryData> Debug for Indices<'_, EntryData>
 where
     EntryData: Debug,
 {
@@ -1541,7 +1541,7 @@ where
     }
 }
 
-impl<'entries, EntryData> DoubleEndedIterator for Indices<'entries, EntryData> {
+impl<EntryData> DoubleEndedIterator for Indices<'_, EntryData> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.remaining == 0 {
             None
@@ -1557,11 +1557,11 @@ impl<'entries, EntryData> DoubleEndedIterator for Indices<'entries, EntryData> {
     }
 }
 
-impl<'entries, EntryData> ExactSizeIterator for Indices<'entries, EntryData> {}
+impl<EntryData> ExactSizeIterator for Indices<'_, EntryData> {}
 
-impl<'entries, EntryData> FusedIterator for Indices<'entries, EntryData> {}
+impl<EntryData> FusedIterator for Indices<'_, EntryData> {}
 
-impl<'entries, EntryData> Iterator for Indices<'entries, EntryData> {
+impl<EntryData> Iterator for Indices<'_, EntryData> {
     type Item = Index<EntryData>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -1694,7 +1694,7 @@ impl<'entries, EntryData> Clone for Iter<'entries, EntryData> {
     }
 }
 
-impl<'entries, EntryData> Debug for Iter<'entries, EntryData>
+impl<EntryData> Debug for Iter<'_, EntryData>
 where
     EntryData: Debug,
 {
@@ -1705,7 +1705,7 @@ where
     }
 }
 
-impl<'entries, EntryData> DoubleEndedIterator for Iter<'entries, EntryData> {
+impl<EntryData> DoubleEndedIterator for Iter<'_, EntryData> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.remaining == 0 {
             None
@@ -1720,9 +1720,9 @@ impl<'entries, EntryData> DoubleEndedIterator for Iter<'entries, EntryData> {
     }
 }
 
-impl<'entries, EntryData> ExactSizeIterator for Iter<'entries, EntryData> {}
+impl<EntryData> ExactSizeIterator for Iter<'_, EntryData> {}
 
-impl<'entries, EntryData> FusedIterator for Iter<'entries, EntryData> {}
+impl<EntryData> FusedIterator for Iter<'_, EntryData> {}
 
 impl<'entries, EntryData> Iterator for Iter<'entries, EntryData> {
     type Item = &'entries EntryData;
@@ -1763,7 +1763,7 @@ pub struct IterMut<'entries, EntryData> {
     tail: Option<usize>,
 }
 
-impl<'entries, EntryData> IterMut<'entries, EntryData> {
+impl<EntryData> IterMut<'_, EntryData> {
     /// Creates an iterator that yields immutable references to entries in the list.
     pub fn iter(&self) -> Iter<EntryData> {
         Iter {
@@ -1775,7 +1775,7 @@ impl<'entries, EntryData> IterMut<'entries, EntryData> {
     }
 }
 
-impl<'entries, EntryData> Debug for IterMut<'entries, EntryData>
+impl<EntryData> Debug for IterMut<'_, EntryData>
 where
     EntryData: Debug,
 {
@@ -1786,7 +1786,7 @@ where
     }
 }
 
-impl<'entries, EntryData> DoubleEndedIterator for IterMut<'entries, EntryData> {
+impl<EntryData> DoubleEndedIterator for IterMut<'_, EntryData> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.remaining == 0 {
             None
@@ -1801,9 +1801,9 @@ impl<'entries, EntryData> DoubleEndedIterator for IterMut<'entries, EntryData> {
     }
 }
 
-impl<'entries, EntryData> ExactSizeIterator for IterMut<'entries, EntryData> {}
+impl<EntryData> ExactSizeIterator for IterMut<'_, EntryData> {}
 
-impl<'entries, EntryData> FusedIterator for IterMut<'entries, EntryData> {}
+impl<EntryData> FusedIterator for IterMut<'_, EntryData> {}
 
 impl<'entries, EntryData> Iterator for IterMut<'entries, EntryData> {
     type Item = &'entries mut EntryData;
@@ -1826,9 +1826,9 @@ impl<'entries, EntryData> Iterator for IterMut<'entries, EntryData> {
     }
 }
 
-unsafe impl<'entries, EntryData> Send for IterMut<'entries, EntryData> where EntryData: Send {}
+unsafe impl<EntryData> Send for IterMut<'_, EntryData> where EntryData: Send {}
 
-unsafe impl<'entries, EntryData> Sync for IterMut<'entries, EntryData> where EntryData: Sync {}
+unsafe impl<EntryData> Sync for IterMut<'_, EntryData> where EntryData: Sync {}
 
 #[cfg(test)]
 mod test {
