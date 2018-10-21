@@ -132,7 +132,7 @@ impl<EntryData> VecList<EntryData> {
     /// ```
     pub fn clear(&mut self) {
         self.entries.clear();
-        self.generation += 1;
+        self.generation = self.generation.wrapping_add(1);
         self.head = None;
         self.length = 0;
         self.tail = None;
