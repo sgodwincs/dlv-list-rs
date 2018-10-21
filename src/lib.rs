@@ -1073,6 +1073,7 @@ impl<EntryData> Extend<EntryData> for VecList<EntryData> {
     where
         Iter: IntoIterator<Item = EntryData>,
     {
+        let iter = iter.into_iter();
         self.reserve(iter.size_hint().0);
 
         for value in iter {
@@ -1685,8 +1686,8 @@ pub struct Iter<'entries, EntryData> {
     tail: Option<usize>,
 }
 
-impl<EntryData> Clone for Iter<'_, EntryData> {
-    fn clone(&self) -> Iter<EntryData> {
+impl<'entries, EntryData> Clone for Iter<'entries, EntryData> {
+    fn clone(&self) -> Iter<'entries, EntryData> {
         Iter {
             entries: self.entries,
             head: self.head,
