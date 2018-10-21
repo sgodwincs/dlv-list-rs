@@ -1291,6 +1291,7 @@ impl<EntryData> Index<EntryData> {
 }
 
 /// An entry in the list. This can be either occupied or vacant.
+#[derive(Clone)]
 enum Entry<EntryData> {
     /// An occupied entry contains actual entry data inserted by the user.
     Occupied(OccupiedEntry<EntryData>),
@@ -1358,6 +1359,7 @@ impl<EntryData> Entry<EntryData> {
 }
 
 /// An occupied entry in the list.
+#[derive(Clone)]
 struct OccupiedEntry<EntryData> {
     /// The generation of when this entry was inserted. This is used to avoid the ABA problem.
     generation: usize,
