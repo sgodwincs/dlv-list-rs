@@ -18,6 +18,7 @@ use std::{mem, ops};
 /// vector based implementation is O(n). Splicing has a similar disadvantage.
 ///
 /// Lastly, the vector based implementation is likely to have better cache locality in general.
+#[derive(Clone)]
 pub struct VecList<EntryData> {
     /// The backing storage for the list. This includes both used and unused indices.`
     entries: Vec<Entry<EntryData>>,
@@ -1032,15 +1033,6 @@ impl<EntryData> VecList<EntryData> {
             tail: None,
             vacant_head: None,
         }
-    }
-}
-
-impl<EntryData> Clone for VecList<EntryData>
-where
-    EntryData: Clone,
-{
-    fn clone(&self) -> Self {
-        self.iter().cloned().collect()
     }
 }
 
