@@ -1,3 +1,8 @@
+# 0.1.3
+
+- Fix possible overflow when incrementing generation.
+- Fix underflow when calling `pack_to_fit` on an empty `VecList`.
+
 # 0.1.2
 
 - Make iterator `iter` functions public.
