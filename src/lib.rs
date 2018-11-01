@@ -758,10 +758,7 @@ impl<EntryData> VecList<EntryData> {
     /// assert_eq!(iter.next(), Some(&10));
     /// assert_eq!(iter.next(), None);
     /// ```
-    pub fn pack_to_fit(&mut self) -> HashMap<Index<EntryData>, Index<EntryData>>
-    where
-        EntryData: Debug,
-    {
+    pub fn pack_to_fit(&mut self) -> HashMap<Index<EntryData>, Index<EntryData>> {
         self.pack_to(self.length)
     }
 
@@ -1450,10 +1447,7 @@ where
     }
 }
 
-impl<EntryData> DoubleEndedIterator for Drain<'_, EntryData>
-where
-    EntryData: Debug,
-{
+impl<EntryData> DoubleEndedIterator for Drain<'_, EntryData> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.remaining == 0 {
             None
@@ -1477,14 +1471,11 @@ impl<EntryData> Drop for Drain<'_, EntryData> {
     }
 }
 
-impl<EntryData> ExactSizeIterator for Drain<'_, EntryData> where EntryData: Debug {}
+impl<EntryData> ExactSizeIterator for Drain<'_, EntryData> {}
 
-impl<EntryData> FusedIterator for Drain<'_, EntryData> where EntryData: Debug {}
+impl<EntryData> FusedIterator for Drain<'_, EntryData> {}
 
-impl<EntryData> Iterator for Drain<'_, EntryData>
-where
-    EntryData: Debug,
-{
+impl<EntryData> Iterator for Drain<'_, EntryData> {
     type Item = EntryData;
 
     fn next(&mut self) -> Option<Self::Item> {
