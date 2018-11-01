@@ -709,10 +709,17 @@ impl<EntryData> VecList<EntryData> {
 
         self.entries = entries;
         self.generation = generation;
-        self.head = Some(0);
         self.length = length;
-        self.tail = Some(length - 1);
         self.vacant_head = None;
+
+        if self.length > 0 {
+            self.head = Some(0);
+            self.tail = Some(length - 1);
+        } else {
+            self.head = None;
+            self.tail = None;
+        }
+
         map
     }
 
@@ -2768,6 +2775,13 @@ mod test {
         assert_eq!(map.len(), 2);
         assert_eq!(map.get(&index_2).unwrap().index, 0);
         assert_eq!(map.get(&index_3).unwrap().index, 1);
+    }
+
+    #[test]
+    fn test_vec_list_pack_to_empty() {
+        let mut list: VecList<i32> = VecList::with_capacity(5);
+        list.pack_to(0);
+        assert_eq!(list.capacity(), 0);
     }
 
     #[should_panic]
