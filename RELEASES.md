@@ -1,3 +1,7 @@
+# 0.1.4
+
+- Remove unnecessary `Debug` bounds.
+
 # 0.1.3
 
 - Fix possible overflow when incrementing generation.
