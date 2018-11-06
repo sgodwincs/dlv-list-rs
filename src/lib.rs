@@ -957,6 +957,29 @@ impl<EntryData> VecList<EntryData> {
         removed_entry.occupied()
     }
 
+    /// Removes the value at the given index.
+    ///
+    /// This function is highly unsafe in the sense that it *will* break logical invariants for this
+    /// type, but it does not expose any undefined behavior. Any further use of this type after
+    /// calling this function is highly likely to cause a panic (but no memory unsafety). It should
+    /// only be used when both of the following conditions apply:
+    ///  1. You only want to remove values from the list; no iteration, insertion or retrieval is
+    ///     to be done afterwards. This is the only removal function that can be used after at least
+    ///     one invocation of it (i.e., do not use [`VecList::remove`], it will probably panic).
+    ///  2. For some reason, you require the ability to parallelize independent removals from the
+    ///     list without locking. This is the primary reason this function is unsafe, as it does not
+    ///     try to maintain logical invariants since that would require accessing shared memory.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there is no value at the given index or if the generation does not match.
+    pub unsafe fn remove_sync(&mut self, index: Index<EntryData>) -> EntryData {
+        let vacant = Entry::Vacant(VacantEntry::new(None));
+        let occupied = mem::replace(&mut self.entries[index.index], vacant).occupied();
+        assert_eq!(occupied.generation, index.generation);
+        occupied.value
+    }
+
     /// Reserves capacity for the given expected size increase.
     ///
     /// The collection may reserve more space to avoid frequent reallocations. After calling this
