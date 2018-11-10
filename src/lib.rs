@@ -1015,7 +1015,7 @@ impl<EntryData> VecList<EntryData> {
     /// list.push_back(-1);
     /// list.push_back(1);
     /// list.push_back(-2);
-    /// list.retain(|&value| value >= 0);
+    /// list.retain(|&mut value| value >= 0);
     ///
     /// let mut iter = list.iter();
     /// assert_eq!(iter.next(), Some(&0));
@@ -1024,15 +1024,15 @@ impl<EntryData> VecList<EntryData> {
     /// ```
     pub fn retain<Predicate>(&mut self, mut predicate: Predicate)
     where
-        Predicate: FnMut(&EntryData) -> bool,
+        Predicate: FnMut(&mut EntryData) -> bool,
     {
         let mut next_index = self.head;
 
         while let Some(index) = next_index {
-            let entry = &self.entries[index].occupied_ref();
+            let entry = &mut self.entries[index].occupied_mut();
             next_index = entry.next;
 
-            if !predicate(&entry.value) {
+            if !predicate(&mut entry.value) {
                 self.remove_entry(index);
             }
         }
@@ -2762,7 +2762,7 @@ mod test {
         list.push_back(2);
         list.push_back(-2);
 
-        list.retain(|&value| value >= 0);
+        list.retain(|&mut value| value >= 0);
         assert_eq!(list.into_iter().collect::<Vec<_>>(), [0, 1, 2]);
     }
 
