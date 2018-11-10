@@ -1,3 +1,7 @@
+# 0.2.0
+
+ - Change `VecList::retain` to give mutability to entries.
+
 # 0.1.5
 
  - Add unsafe removal function `VecList::remove_sync`. See its documentation for details.
