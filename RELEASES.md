@@ -1,3 +1,8 @@
+# 0.2.1
+
+ - Reduce memory size of `VecList` from 96 bytes to 64. Tradeoff is max capacity is now reduced by
+   1 and a very slight performance decrease.
+
 # 0.2.0
 
  - Change `VecList::retain` to give mutability to entries.

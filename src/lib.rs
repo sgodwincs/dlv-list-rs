@@ -5,6 +5,7 @@ use std::fmt::{self, Debug, Formatter};
 use std::hash::{Hash, Hasher};
 use std::iter::{FromIterator, FusedIterator};
 use std::marker::PhantomData;
+use std::num::NonZeroUsize;
 use std::{mem, ops};
 
 /// A semi-doubly linked list implemented with a vector.
@@ -27,17 +28,17 @@ pub struct VecList<EntryData> {
     generation: usize,
 
     /// The index of the head of the list.
-    head: Option<usize>,
+    head: Option<NonZeroUsize>,
 
     /// The length of the list since we cannot rely on the length of [`VecList::entries`] because
     /// it includes unused indices.
     length: usize,
 
     /// The index of the tail of the list.
-    tail: Option<usize>,
+    tail: Option<NonZeroUsize>,
 
     /// The index of the head of the vacant indices.
-    vacant_head: Option<usize>,
+    vacant_head: Option<NonZeroUsize>,
 }
 
 impl<EntryData> VecList<EntryData> {
@@ -58,7 +59,7 @@ impl<EntryData> VecList<EntryData> {
     /// assert_eq!(list.back(), Some(&5));
     /// ```
     pub fn back(&self) -> Option<&EntryData> {
-        let index = self.tail?;
+        let index = self.tail()?;
 
         match &self.entries[index] {
             Entry::Occupied(entry) => Some(&entry.value),
@@ -88,7 +89,7 @@ impl<EntryData> VecList<EntryData> {
     /// assert_eq!(list.back(), Some(&10));
     /// ```
     pub fn back_mut(&mut self) -> Option<&mut EntryData> {
-        let index = self.tail?;
+        let index = self.tail()?;
 
         match &mut self.entries[index] {
             Entry::Occupied(entry) => Some(&mut entry.value),
@@ -187,9 +188,9 @@ impl<EntryData> VecList<EntryData> {
     /// ```
     pub fn drain(&mut self) -> Drain<EntryData> {
         Drain {
-            head: self.head,
+            head: self.head(),
             remaining: self.length,
-            tail: self.tail,
+            tail: self.tail(),
             list: self,
         }
     }
@@ -211,7 +212,7 @@ impl<EntryData> VecList<EntryData> {
     /// assert_eq!(list.front(), Some(&5));
     /// ```
     pub fn front(&self) -> Option<&EntryData> {
-        let index = self.head?;
+        let index = self.head()?;
 
         match &self.entries[index] {
             Entry::Occupied(entry) => Some(&entry.value),
@@ -241,7 +242,7 @@ impl<EntryData> VecList<EntryData> {
     /// assert_eq!(list.front(), Some(&10));
     /// ```
     pub fn front_mut(&mut self) -> Option<&mut EntryData> {
-        let index = self.head?;
+        let index = self.head()?;
 
         match &mut self.entries[index] {
             Entry::Occupied(entry) => Some(&mut entry.value),
@@ -364,6 +365,11 @@ impl<EntryData> VecList<EntryData> {
         }
     }
 
+    /// Convenience function for returning the actual head index.
+    fn head(&self) -> Option<usize> {
+        self.head.map(|head| head.get() - 1)
+    }
+
     /// Creates an indices iterator which will yield all indices of the list in order.
     ///
     /// # Examples
@@ -387,9 +393,9 @@ impl<EntryData> VecList<EntryData> {
     pub fn indices(&self) -> Indices<EntryData> {
         Indices {
             entries: &self.entries,
-            head: self.head,
+            head: self.head(),
             remaining: self.length,
-            tail: self.tail,
+            tail: self.tail(),
         }
     }
 
@@ -404,6 +410,8 @@ impl<EntryData> VecList<EntryData> {
     /// Panics if the index refers to an index not in the list anymore or if the index has been
     /// invalidated. This is enforced because this function will consume the value to be inserted,
     /// and if it cannot be inserted (due to the index not being valid), then it will be lost.
+    ///
+    /// Also panics if the new capacity overflows `usize`.
     ///
     /// # Examples
     ///
@@ -427,8 +435,8 @@ impl<EntryData> VecList<EntryData> {
         let entry = self.entries[index.index].occupied_mut();
         entry.next = Some(new_index);
 
-        if Some(index.index) == self.tail {
-            self.tail = Some(new_index);
+        if Some(index.index) == self.tail() {
+            self.set_tail(new_index);
         }
 
         if let Some(next_index) = next_index {
@@ -449,6 +457,8 @@ impl<EntryData> VecList<EntryData> {
     /// Panics if the index refers to an index not in the list anymore or if the index has been
     /// invalidated. This is enforced because this function will consume the value to be inserted,
     /// and if it cannot be inserted (due to the index not being valid), then it will be lost.
+    ///
+    /// Also panics if the new capacity overflows `usize`.
     ///
     /// # Examples
     ///
@@ -472,8 +482,8 @@ impl<EntryData> VecList<EntryData> {
         let entry = self.entries[index.index].occupied_mut();
         entry.previous = Some(new_index);
 
-        if Some(index.index) == self.head {
-            self.head = Some(new_index);
+        if Some(index.index) == self.head() {
+            self.set_head(new_index);
         }
 
         if let Some(previous_index) = previous_index {
@@ -484,15 +494,23 @@ impl<EntryData> VecList<EntryData> {
     }
 
     /// Inserts the given value into the list with the assumption that it is currently empty.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows `usize`.
     fn insert_empty(&mut self, value: EntryData) -> Index<EntryData> {
         let generation = self.generation;
         let index = self.insert_new(value, None, None);
-        self.head = Some(index);
-        self.tail = Some(index);
+        self.set_head(index);
+        self.set_tail(index);
         Index::new(index, generation)
     }
 
     /// Inserts the given value into the list with its expected previous and next value indices.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows `usize`.
     fn insert_new(
         &mut self,
         value: EntryData,
@@ -503,9 +521,13 @@ impl<EntryData> VecList<EntryData> {
 
         self.length += 1;
 
-        match self.vacant_head {
+        if self.length == usize::max_value() {
+            panic!("reached maximum possible length");
+        }
+
+        match self.vacant_head() {
             Some(index) => {
-                self.vacant_head = self.entries[index].vacant_ref().next;
+                self.set_vacant_head(self.entries[index].vacant_ref().next);
                 self.entries[index] =
                     Occupied(OccupiedEntry::new(self.generation, previous, next, value));
                 index
@@ -562,9 +584,9 @@ impl<EntryData> VecList<EntryData> {
     pub fn iter(&self) -> Iter<EntryData> {
         Iter {
             entries: &self.entries,
-            head: self.head,
+            head: self.head(),
             remaining: self.length,
-            tail: self.tail,
+            tail: self.tail(),
         }
     }
 
@@ -591,10 +613,10 @@ impl<EntryData> VecList<EntryData> {
     pub fn iter_mut(&mut self) -> IterMut<EntryData> {
         IterMut {
             entries: &mut self.entries as *mut _,
-            head: self.head,
+            head: self.head(),
             phantom: PhantomData,
             remaining: self.length,
-            tail: self.tail,
+            tail: self.tail(),
         }
     }
 
@@ -685,7 +707,7 @@ impl<EntryData> VecList<EntryData> {
         let generation = thread_rng().gen();
         let length = self.length;
         let mut map = HashMap::with_capacity(length);
-        let mut next_index = self.head;
+        let mut next_index = self.head();
 
         while let Some(index) = next_index {
             let mut entry = self.remove_entry(index).expect("expected occupied entry");
@@ -713,8 +735,8 @@ impl<EntryData> VecList<EntryData> {
         self.vacant_head = None;
 
         if self.length > 0 {
-            self.head = Some(0);
-            self.tail = Some(length - 1);
+            self.set_head(0);
+            self.set_tail(length - 1);
         } else {
             self.head = None;
             self.tail = None;
@@ -783,7 +805,7 @@ impl<EntryData> VecList<EntryData> {
     /// assert_eq!(list.len(), 2);
     /// ```
     pub fn pop_back(&mut self) -> Option<EntryData> {
-        self.remove_entry(self.tail?).map(|entry| entry.value)
+        self.remove_entry(self.tail()?).map(|entry| entry.value)
     }
 
     /// Removes and returns the value at the front of the list, if it exists.
@@ -807,7 +829,7 @@ impl<EntryData> VecList<EntryData> {
     /// assert_eq!(list.len(), 2);
     /// ```
     pub fn pop_front(&mut self) -> Option<EntryData> {
-        self.remove_entry(self.head?).map(|entry| entry.value)
+        self.remove_entry(self.head()?).map(|entry| entry.value)
     }
 
     /// Inserts the given value to the back of the list.
@@ -815,6 +837,10 @@ impl<EntryData> VecList<EntryData> {
     /// The index of the newly inserted value will be returned.
     ///
     /// Complexity: amortized O(1)
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows `usize`.
     ///
     /// # Examples
     ///
@@ -826,13 +852,13 @@ impl<EntryData> VecList<EntryData> {
     /// assert_eq!(list.get(index), Some(&0));
     /// ```
     pub fn push_back(&mut self, value: EntryData) -> Index<EntryData> {
-        let tail_index = match self.tail {
+        let tail_index = match self.tail() {
             Some(index) => index,
             None => return self.insert_empty(value),
         };
         let index = self.insert_new(value, Some(tail_index), None);
         self.entries[tail_index].occupied_mut().next = Some(index);
-        self.tail = Some(index);
+        self.set_tail(index);
         Index::new(index, self.generation)
     }
 
@@ -841,6 +867,10 @@ impl<EntryData> VecList<EntryData> {
     /// The index of the newly inserted value will be returned.
     ///
     /// Complexity: amortized O(1)
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows `usize`.
     ///
     /// # Examples
     ///
@@ -852,13 +882,13 @@ impl<EntryData> VecList<EntryData> {
     /// assert_eq!(list.get(index), Some(&0));
     /// ```
     pub fn push_front(&mut self, value: EntryData) -> Index<EntryData> {
-        let head_index = match self.head {
+        let head_index = match self.head() {
             Some(index) => index,
             None => return self.insert_empty(value),
         };
         let index = self.insert_new(value, None, Some(head_index));
         self.entries[head_index].occupied_mut().previous = Some(index);
-        self.head = Some(index);
+        self.set_head(index);
         Index::new(index, self.generation)
     }
 
@@ -921,16 +951,17 @@ impl<EntryData> VecList<EntryData> {
         index: usize,
         next_index: Option<usize>,
     ) -> OccupiedEntry<EntryData> {
-        let head_index = self.head.expect("expected head index");
-        let tail_index = self.tail.expect("expected tail index");
+        let head_index = self.head().expect("expected head index");
+        let tail_index = self.tail().expect("expected tail index");
+        let vacant_head = self.vacant_head();
         let removed_entry = mem::replace(
             &mut self.entries[index],
-            Entry::Vacant(VacantEntry::new(self.vacant_head)),
+            Entry::Vacant(VacantEntry::new(vacant_head)),
         );
 
         self.generation = self.generation.wrapping_add(1);
         self.length -= 1;
-        self.vacant_head = Some(index);
+        self.set_vacant_head(Some(index));
 
         if index == head_index && index == tail_index {
             self.head = None;
@@ -939,12 +970,12 @@ impl<EntryData> VecList<EntryData> {
             self.entries[next_index.expect("expected next entry to exist")]
                 .occupied_mut()
                 .previous = None;
-            self.head = next_index;
+            self.head = next_index.map(|index| NonZeroUsize::new(index + 1).unwrap());
         } else if index == tail_index {
             self.entries[previous_index.expect("expected previous entry to exist")]
                 .occupied_mut()
                 .next = None;
-            self.tail = previous_index;
+            self.tail = previous_index.map(|index| NonZeroUsize::new(index + 1).unwrap());
         } else {
             self.entries[next_index.expect("expected next entry to exist")]
                 .occupied_mut()
@@ -986,6 +1017,10 @@ impl<EntryData> VecList<EntryData> {
     /// function, capacity will be greater than or equal to `self.len() + additional_capacity`.
     /// Does nothing if the current capacity is already sufficient.
     ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows `usize`.
+    ///
     /// # Examples
     ///
     /// ```
@@ -1026,7 +1061,7 @@ impl<EntryData> VecList<EntryData> {
     where
         Predicate: FnMut(&mut EntryData) -> bool,
     {
-        let mut next_index = self.head;
+        let mut next_index = self.head();
 
         while let Some(index) = next_index {
             let entry = &mut self.entries[index].occupied_mut();
@@ -1036,6 +1071,31 @@ impl<EntryData> VecList<EntryData> {
                 self.remove_entry(index);
             }
         }
+    }
+
+    /// Convenience function for returning setting the offset head index.
+    fn set_head(&mut self, index: usize) {
+        self.head = Some(NonZeroUsize::new(index + 1).unwrap());
+    }
+
+    /// Convenience function for returning setting the offset tail index.
+    fn set_tail(&mut self, index: usize) {
+        self.tail = Some(NonZeroUsize::new(index + 1).unwrap());
+    }
+
+    /// Convenience function for returning setting the offset vacant head index.
+    fn set_vacant_head(&mut self, index: Option<usize>) {
+        self.vacant_head = index.map(|index| NonZeroUsize::new(index + 1).unwrap());
+    }
+
+    /// Convenience function for returning the actual tail index.
+    fn tail(&self) -> Option<usize> {
+        self.tail.map(|tail| tail.get() - 1)
+    }
+
+    /// Convenience function for returning the actual vacnt head index.
+    fn vacant_head(&self) -> Option<usize> {
+        self.vacant_head.map(|vacant_head| vacant_head.get() - 1)
     }
 
     /// Creates a new list with the given capacity.
@@ -1160,9 +1220,9 @@ impl<EntryData> IntoIterator for VecList<EntryData> {
 
     fn into_iter(self) -> Self::IntoIter {
         IntoIter {
-            head: self.head,
+            head: self.head(),
             remaining: self.length,
-            tail: self.tail,
+            tail: self.tail(),
             list: self,
         }
     }
@@ -1175,9 +1235,9 @@ impl<'entries, EntryData> IntoIterator for &'entries VecList<EntryData> {
     fn into_iter(self) -> Self::IntoIter {
         Iter {
             entries: &self.entries,
-            head: self.head,
+            head: self.head(),
             remaining: self.length,
-            tail: self.tail,
+            tail: self.tail(),
         }
     }
 }
@@ -1189,10 +1249,10 @@ impl<'entries, EntryData> IntoIterator for &'entries mut VecList<EntryData> {
     fn into_iter(self) -> Self::IntoIter {
         IterMut {
             entries: &mut self.entries as *mut _,
-            head: self.head,
+            head: self.head(),
             phantom: PhantomData,
             remaining: self.length,
-            tail: self.tail,
+            tail: self.tail(),
         }
     }
 }
