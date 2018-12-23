@@ -1075,17 +1075,18 @@ impl<EntryData> VecList<EntryData> {
 
     /// Convenience function for returning setting the offset head index.
     fn set_head(&mut self, index: usize) {
-        self.head = Some(NonZeroUsize::new(index + 1).unwrap());
+        self.head = Some(NonZeroUsize::new(index + 1).expect("head should not be 0"));
     }
 
     /// Convenience function for returning setting the offset tail index.
     fn set_tail(&mut self, index: usize) {
-        self.tail = Some(NonZeroUsize::new(index + 1).unwrap());
+        self.tail = Some(NonZeroUsize::new(index + 1).expect("tail should not be 0"));
     }
 
     /// Convenience function for returning setting the offset vacant head index.
     fn set_vacant_head(&mut self, index: Option<usize>) {
-        self.vacant_head = index.map(|index| NonZeroUsize::new(index + 1).unwrap());
+        self.vacant_head =
+            index.map(|index| NonZeroUsize::new(index + 1).expect("vacant head should not be 0"));
     }
 
     /// Convenience function for returning the actual tail index.
