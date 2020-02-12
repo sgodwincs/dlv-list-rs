@@ -11,4 +11,4 @@ repository = "https://github.com/sgodwincs/dlv-list-rs"
 version = "0.2.1"
 
 [dependencies]
-rand = "0.5.5"
+rand = "0.7.3"
