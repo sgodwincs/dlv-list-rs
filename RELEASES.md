@@ -1,3 +1,7 @@
+# 0.2.2
+ 
+ - Update `rand` from `0.5.5` to `0.7.3`.
+
 # 0.2.1
 
  - Reduce memory size of `VecList` from 96 bytes to 64. Tradeoff is max capacity is now reduced by
