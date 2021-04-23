@@ -1,3 +1,7 @@
+# 0.2.3.
+
+ - Update `rand` from `0.7.3` to `0.8.3`.
+
 # 0.2.2
  
  - Update `rand` from `0.5.5` to `0.7.3`.
