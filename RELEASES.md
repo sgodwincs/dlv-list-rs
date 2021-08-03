@@ -1,8 +1,12 @@
-# 0.2.4.
+# 0.3.0
 
  - Drop dependency on `rand`.
 
-# 0.2.3.
+# 0.2.4
+
+ - Yanked due to breaking change.
+
+# 0.2.3
 
  - Update `rand` from `0.7.3` to `0.8.3`.
 
