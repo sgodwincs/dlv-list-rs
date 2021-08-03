@@ -1,3 +1,7 @@
+# 0.2.4.
+
+ - Drop dependency on `rand`.
+
 # 0.2.3.
 
  - Update `rand` from `0.7.3` to `0.8.3`.
