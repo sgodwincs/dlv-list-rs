@@ -9,6 +9,3 @@ name = "dlv-list"
 readme = "README.md"
 repository = "https://github.com/sgodwincs/dlv-list-rs"
 version = "0.2.3"
-
-[dependencies]
-rand = "0.8.3"

@@ -1,8 +1,8 @@
-use rand::{thread_rng, Rng};
 use std::cmp::Ordering;
+use std::collections::hash_map::RandomState;
 use std::collections::{HashMap, LinkedList};
 use std::fmt::{self, Debug, Formatter};
-use std::hash::{Hash, Hasher};
+use std::hash::{BuildHasher, Hash, Hasher};
 use std::iter::{FromIterator, FusedIterator};
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
@@ -25,7 +25,7 @@ pub struct VecList<EntryData> {
     entries: Vec<Entry<EntryData>>,
 
     /// The current generation of the list. This is used to avoid the ABA problem.
-    generation: usize,
+    generation: u64,
 
     /// The index of the head of the list.
     head: Option<NonZeroUsize>,
@@ -704,7 +704,7 @@ impl<EntryData> VecList<EntryData> {
 
         let mut count = 0;
         let mut entries = Vec::with_capacity(minimum_capacity);
-        let generation = thread_rng().gen();
+        let generation = create_initial_generation();
         let length = self.length;
         let mut map = HashMap::with_capacity(length);
         let mut next_index = self.head();
@@ -988,29 +988,6 @@ impl<EntryData> VecList<EntryData> {
         removed_entry.occupied()
     }
 
-    /// Removes the value at the given index.
-    ///
-    /// This function is highly unsafe in the sense that it *will* break logical invariants for this
-    /// type, but it does not expose any undefined behavior. Any further use of this type after
-    /// calling this function is highly likely to cause a panic (but no memory unsafety). It should
-    /// only be used when both of the following conditions apply:
-    ///  1. You only want to remove values from the list; no iteration, insertion or retrieval is
-    ///     to be done afterwards. This is the only removal function that can be used after at least
-    ///     one invocation of it (i.e., do not use [`VecList::remove`], it will probably panic).
-    ///  2. For some reason, you require the ability to parallelize independent removals from the
-    ///     list without locking. This is the primary reason this function is unsafe, as it does not
-    ///     try to maintain logical invariants since that would require accessing shared memory.
-    ///
-    /// # Panics
-    ///
-    /// Panics if there is no value at the given index or if the generation does not match.
-    pub unsafe fn remove_sync(&mut self, index: Index<EntryData>) -> EntryData {
-        let vacant = Entry::Vacant(VacantEntry::new(None));
-        let occupied = mem::replace(&mut self.entries[index.index], vacant).occupied();
-        assert_eq!(occupied.generation, index.generation);
-        occupied.value
-    }
-
     /// Reserves capacity for the given expected size increase.
     ///
     /// The collection may reserve more space to avoid frequent reallocations. After calling this
@@ -1094,7 +1071,7 @@ impl<EntryData> VecList<EntryData> {
         self.tail.map(|tail| tail.get() - 1)
     }
 
-    /// Convenience function for returning the actual vacnt head index.
+    /// Convenience function for returning the actual vacant head index.
     fn vacant_head(&self) -> Option<usize> {
         self.vacant_head.map(|vacant_head| vacant_head.get() - 1)
     }
@@ -1115,7 +1092,7 @@ impl<EntryData> VecList<EntryData> {
     pub fn with_capacity(capacity: usize) -> Self {
         VecList {
             entries: Vec::with_capacity(capacity),
-            generation: thread_rng().gen(),
+            generation: create_initial_generation(),
             head: None,
             length: 0,
             tail: None,
@@ -1137,7 +1114,7 @@ impl<EntryData> Default for VecList<EntryData> {
     fn default() -> Self {
         VecList {
             entries: Vec::default(),
-            generation: thread_rng().gen(),
+            generation: create_initial_generation(),
             head: None,
             length: 0,
             tail: None,
@@ -1317,7 +1294,7 @@ where
 /// This index may be invalidated by operations on the list itself.
 pub struct Index<EntryData> {
     /// The generation of the entry currently at this index. This is used to avoid the ABA problem.
-    generation: usize,
+    generation: u64,
 
     /// The actual index into the entry list.
     index: usize,
@@ -1369,7 +1346,7 @@ impl<EntryData> PartialEq for Index<EntryData> {
 
 impl<EntryData> Index<EntryData> {
     /// Convenience function for creating new index.
-    pub(self) fn new(index: usize, generation: usize) -> Index<EntryData> {
+    pub(self) fn new(index: usize, generation: u64) -> Index<EntryData> {
         Index {
             generation,
             index,
@@ -1450,7 +1427,7 @@ impl<EntryData> Entry<EntryData> {
 #[derive(Clone)]
 struct OccupiedEntry<EntryData> {
     /// The generation of when this entry was inserted. This is used to avoid the ABA problem.
-    generation: usize,
+    generation: u64,
 
     /// The index of the next occupied entry in the list.
     next: Option<usize>,
@@ -1465,7 +1442,7 @@ struct OccupiedEntry<EntryData> {
 impl<EntryData> OccupiedEntry<EntryData> {
     /// Convenience function for creating a new occupied entry.
     pub fn new(
-        generation: usize,
+        generation: u64,
         previous: Option<usize>,
         next: Option<usize>,
         value: EntryData,
@@ -1908,6 +1885,13 @@ impl<'entries, EntryData> Iterator for IterMut<'entries, EntryData> {
 unsafe impl<EntryData> Send for IterMut<'_, EntryData> where EntryData: Send {}
 
 unsafe impl<EntryData> Sync for IterMut<'_, EntryData> where EntryData: Sync {}
+
+/// Creates the initial generation seeded by the current time.
+fn create_initial_generation() -> u64 {
+    let mut hasher = RandomState::new().build_hasher();
+    hasher.write_u32(0);
+    hasher.finish()
+}
 
 #[cfg(test)]
 mod test {
