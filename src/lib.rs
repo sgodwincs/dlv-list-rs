@@ -535,8 +535,6 @@ impl<EntryData> VecList<EntryData> {
     previous: Option<usize>,
     next: Option<usize>,
   ) -> usize {
-    use self::Entry::*;
-
     self.length += 1;
 
     if self.length == usize::max_value() {
@@ -546,11 +544,12 @@ impl<EntryData> VecList<EntryData> {
     match self.vacant_head() {
       Some(index) => {
         self.set_vacant_head(self.entries[index].vacant_ref().next);
-        self.entries[index] = Occupied(OccupiedEntry::new(self.generation, previous, next, value));
+        self.entries[index] =
+          Entry::Occupied(OccupiedEntry::new(self.generation, previous, next, value));
         index
       }
       None => {
-        self.entries.push(Occupied(OccupiedEntry::new(
+        self.entries.push(Entry::Occupied(OccupiedEntry::new(
           self.generation,
           previous,
           next,
@@ -951,11 +950,9 @@ impl<EntryData> VecList<EntryData> {
   /// If the index refers to an index not in the list anymore or if the index has been
   /// invalidated, then [`None`] will be returned and the list will be unaffected.
   fn remove_entry(&mut self, index: usize) -> Option<OccupiedEntry<EntryData>> {
-    use self::Entry::*;
-
     let (previous_index, next_index) = match &self.entries[index] {
-      Occupied(entry) => (entry.previous, entry.next),
-      Vacant(_) => return None,
+      Entry::Occupied(entry) => (entry.previous, entry.next),
+      Entry::Vacant(_) => return None,
     };
     Some(self.remove_helper(previous_index, index, next_index))
   }
@@ -1401,11 +1398,9 @@ impl<EntryData> Entry<EntryData> {
   /// Panics if the variant is actually [`Entry::Vacant`].
   #[must_use]
   pub fn occupied(self) -> OccupiedEntry<EntryData> {
-    use self::Entry::*;
-
     match self {
-      Occupied(entry) => entry,
-      Vacant(_) => panic!("expected occupied entry"),
+      Entry::Occupied(entry) => entry,
+      Entry::Vacant(_) => panic!("expected occupied entry"),
     }
   }
 
@@ -1416,11 +1411,9 @@ impl<EntryData> Entry<EntryData> {
   /// Panics if the variant is actually [`Entry::Vacant`].
   #[must_use]
   pub fn occupied_ref(&self) -> &OccupiedEntry<EntryData> {
-    use self::Entry::*;
-
     match self {
-      Occupied(entry) => entry,
-      Vacant(_) => panic!("expected occupied entry"),
+      Entry::Occupied(entry) => entry,
+      Entry::Vacant(_) => panic!("expected occupied entry"),
     }
   }
 
@@ -1431,11 +1424,9 @@ impl<EntryData> Entry<EntryData> {
   /// Panics if the variant is actually [`Entry::Vacant`].
   #[must_use]
   pub fn occupied_mut(&mut self) -> &mut OccupiedEntry<EntryData> {
-    use self::Entry::*;
-
     match self {
-      Occupied(entry) => entry,
-      Vacant(_) => panic!("expected occupied entry"),
+      Entry::Occupied(entry) => entry,
+      Entry::Vacant(_) => panic!("expected occupied entry"),
     }
   }
 
@@ -1446,11 +1437,9 @@ impl<EntryData> Entry<EntryData> {
   /// Panics if the variant is actually [`Entry::Occupied`].
   #[must_use]
   pub fn vacant_ref(&self) -> &VacantEntry {
-    use self::Entry::*;
-
     match self {
-      Vacant(entry) => entry,
-      Occupied(_) => panic!("expected vacant entry"),
+      Entry::Vacant(entry) => entry,
+      Entry::Occupied(_) => panic!("expected vacant entry"),
     }
   }
 }
