@@ -27,9 +27,9 @@ use std::{
 ///
 /// Lastly, the vector based implementation is likely to have better cache locality in general.
 #[derive(Clone)]
-pub struct VecList<EntryData> {
+pub struct VecList<T> {
   /// The backing storage for the list. This includes both used and unused indices.
-  entries: Vec<Entry<EntryData>>,
+  entries: Vec<Entry<T>>,
 
   /// The current generation of the list. This is used to avoid the ABA problem.
   generation: u64,
@@ -48,7 +48,7 @@ pub struct VecList<EntryData> {
   vacant_head: Option<NonZeroUsize>,
 }
 
-impl<EntryData> VecList<EntryData> {
+impl<T> VecList<T> {
   /// Returns an immutable reference to the value at the back of the list, if it exists.
   ///
   /// Complexity: O(1)
@@ -66,7 +66,7 @@ impl<EntryData> VecList<EntryData> {
   /// assert_eq!(list.back(), Some(&5));
   /// ```
   #[must_use]
-  pub fn back(&self) -> Option<&EntryData> {
+  pub fn back(&self) -> Option<&T> {
     let index = self.tail()?;
 
     match &self.entries[index] {
@@ -97,7 +97,7 @@ impl<EntryData> VecList<EntryData> {
   /// assert_eq!(list.back(), Some(&10));
   /// ```
   #[must_use]
-  pub fn back_mut(&mut self) -> Option<&mut EntryData> {
+  pub fn back_mut(&mut self) -> Option<&mut T> {
     let index = self.tail()?;
 
     match &mut self.entries[index] {
@@ -166,9 +166,9 @@ impl<EntryData> VecList<EntryData> {
   /// assert!(list.contains(&0));
   /// ```
   #[must_use]
-  pub fn contains(&self, value: &EntryData) -> bool
+  pub fn contains(&self, value: &T) -> bool
   where
-    EntryData: PartialEq,
+    T: PartialEq,
   {
     self.iter().any(|entry| entry == value)
   }
@@ -196,7 +196,7 @@ impl<EntryData> VecList<EntryData> {
   /// println!("{}", list.len());
   /// assert!(list.is_empty());
   /// ```
-  pub fn drain(&mut self) -> Drain<'_, EntryData> {
+  pub fn drain(&mut self) -> Drain<'_, T> {
     Drain {
       head: self.head(),
       remaining: self.length,
@@ -222,7 +222,7 @@ impl<EntryData> VecList<EntryData> {
   /// assert_eq!(list.front(), Some(&5));
   /// ```
   #[must_use]
-  pub fn front(&self) -> Option<&EntryData> {
+  pub fn front(&self) -> Option<&T> {
     let index = self.head()?;
 
     match &self.entries[index] {
@@ -253,7 +253,7 @@ impl<EntryData> VecList<EntryData> {
   /// assert_eq!(list.front(), Some(&10));
   /// ```
   #[must_use]
-  pub fn front_mut(&mut self) -> Option<&mut EntryData> {
+  pub fn front_mut(&mut self) -> Option<&mut T> {
     let index = self.head()?;
 
     match &mut self.entries[index] {
@@ -282,7 +282,7 @@ impl<EntryData> VecList<EntryData> {
   /// assert_eq!(list.get(index), Some(&5));
   /// ```
   #[must_use]
-  pub fn get(&self, index: Index<EntryData>) -> Option<&EntryData> {
+  pub fn get(&self, index: Index<T>) -> Option<&T> {
     match self.entries.get(index.index)? {
       Entry::Occupied(entry) if entry.generation == index.generation => Some(&entry.value),
       _ => None,
@@ -308,7 +308,7 @@ impl<EntryData> VecList<EntryData> {
   /// assert_eq!(list.get(index), Some(&100));
   /// ```
   #[must_use]
-  pub fn get_mut(&mut self, index: Index<EntryData>) -> Option<&mut EntryData> {
+  pub fn get_mut(&mut self, index: Index<T>) -> Option<&mut T> {
     match self.entries.get_mut(index.index)? {
       Entry::Occupied(entry) if entry.generation == index.generation => Some(&mut entry.value),
       _ => None,
@@ -336,7 +336,7 @@ impl<EntryData> VecList<EntryData> {
   /// assert_eq!(list.get_next_index(index_1), Some(index_2));
   /// ```
   #[must_use]
-  pub fn get_next_index(&self, index: Index<EntryData>) -> Option<Index<EntryData>> {
+  pub fn get_next_index(&self, index: Index<T>) -> Option<Index<T>> {
     match self.entries.get(index.index)? {
       Entry::Occupied(entry) if entry.generation == index.generation => {
         let next_index = entry.next?;
@@ -368,7 +368,7 @@ impl<EntryData> VecList<EntryData> {
   /// assert_eq!(list.get_previous_index(index_1), Some(index_2));
   /// ```
   #[must_use]
-  pub fn get_previous_index(&self, index: Index<EntryData>) -> Option<Index<EntryData>> {
+  pub fn get_previous_index(&self, index: Index<T>) -> Option<Index<T>> {
     match self.entries.get(index.index)? {
       Entry::Occupied(entry) if entry.generation == index.generation => {
         let previous_index = entry.previous?;
@@ -406,7 +406,7 @@ impl<EntryData> VecList<EntryData> {
   /// assert_eq!(indices.next(), None);
   /// ```
   #[must_use]
-  pub fn indices(&self) -> Indices<'_, EntryData> {
+  pub fn indices(&self) -> Indices<'_, T> {
     Indices {
       entries: &self.entries,
       head: self.head(),
@@ -442,7 +442,7 @@ impl<EntryData> VecList<EntryData> {
   /// let index_2 = list.insert_after(index_1, 1000);
   /// assert_eq!(list.get_next_index(index_1), Some(index_2));
   /// ```
-  pub fn insert_after(&mut self, index: Index<EntryData>, value: EntryData) -> Index<EntryData> {
+  pub fn insert_after(&mut self, index: Index<T>, value: T) -> Index<T> {
     let next_index = match &mut self.entries[index.index] {
       Entry::Occupied(entry) if entry.generation == index.generation => entry.next,
       _ => panic!("expected occupied entry with correct generation"),
@@ -489,7 +489,7 @@ impl<EntryData> VecList<EntryData> {
   /// let index_2 = list.insert_before(index_1, 1000);
   /// assert_eq!(list.get_previous_index(index_1), Some(index_2));
   /// ```
-  pub fn insert_before(&mut self, index: Index<EntryData>, value: EntryData) -> Index<EntryData> {
+  pub fn insert_before(&mut self, index: Index<T>, value: T) -> Index<T> {
     let previous_index = match &mut self.entries[index.index] {
       Entry::Occupied(entry) if entry.generation == index.generation => entry.previous,
       _ => panic!("expected occupied entry with correct generation"),
@@ -514,7 +514,7 @@ impl<EntryData> VecList<EntryData> {
   /// # Panics
   ///
   /// Panics if the new capacity overflows `usize`.
-  fn insert_empty(&mut self, value: EntryData) -> Index<EntryData> {
+  fn insert_empty(&mut self, value: T) -> Index<T> {
     let generation = self.generation;
     let index = self.insert_new(value, None, None);
     self.set_head(index);
@@ -527,12 +527,7 @@ impl<EntryData> VecList<EntryData> {
   /// # Panics
   ///
   /// Panics if the new capacity overflows `usize`.
-  fn insert_new(
-    &mut self,
-    value: EntryData,
-    previous: Option<usize>,
-    next: Option<usize>,
-  ) -> usize {
+  fn insert_new(&mut self, value: T, previous: Option<usize>, next: Option<usize>) -> usize {
     self.length += 1;
 
     if self.length == usize::max_value() {
@@ -597,7 +592,7 @@ impl<EntryData> VecList<EntryData> {
   /// assert_eq!(iter.next(), None);
   /// ```
   #[must_use]
-  pub fn iter(&self) -> Iter<'_, EntryData> {
+  pub fn iter(&self) -> Iter<'_, T> {
     Iter {
       entries: &self.entries,
       head: self.head(),
@@ -627,7 +622,7 @@ impl<EntryData> VecList<EntryData> {
   /// assert_eq!(iter.next(), None);
   /// ```
   #[must_use]
-  pub fn iter_mut(&mut self) -> IterMut<'_, EntryData> {
+  pub fn iter_mut(&mut self) -> IterMut<'_, T> {
     IterMut {
       entries: &mut self.entries,
       head: self.head(),
@@ -712,10 +707,7 @@ impl<EntryData> VecList<EntryData> {
   /// assert_eq!(iter.next(), Some(&10));
   /// assert_eq!(iter.next(), None);
   /// ```
-  pub fn pack_to(
-    &mut self,
-    minimum_capacity: usize,
-  ) -> HashMap<Index<EntryData>, Index<EntryData>> {
+  pub fn pack_to(&mut self, minimum_capacity: usize) -> HashMap<Index<T>, Index<T>> {
     assert!(
       minimum_capacity >= self.length,
       "cannot shrink to capacity lower than current length"
@@ -800,7 +792,7 @@ impl<EntryData> VecList<EntryData> {
   /// assert_eq!(iter.next(), Some(&10));
   /// assert_eq!(iter.next(), None);
   /// ```
-  pub fn pack_to_fit(&mut self) -> HashMap<Index<EntryData>, Index<EntryData>> {
+  pub fn pack_to_fit(&mut self) -> HashMap<Index<T>, Index<T>> {
     self.pack_to(self.length)
   }
 
@@ -824,7 +816,7 @@ impl<EntryData> VecList<EntryData> {
   /// assert_eq!(list.pop_back(), Some(2));
   /// assert_eq!(list.len(), 2);
   /// ```
-  pub fn pop_back(&mut self) -> Option<EntryData> {
+  pub fn pop_back(&mut self) -> Option<T> {
     self.remove_entry(self.tail()?).map(|entry| entry.value)
   }
 
@@ -848,7 +840,7 @@ impl<EntryData> VecList<EntryData> {
   /// assert_eq!(list.pop_front(), Some(2));
   /// assert_eq!(list.len(), 2);
   /// ```
-  pub fn pop_front(&mut self) -> Option<EntryData> {
+  pub fn pop_front(&mut self) -> Option<T> {
     self.remove_entry(self.head()?).map(|entry| entry.value)
   }
 
@@ -871,7 +863,7 @@ impl<EntryData> VecList<EntryData> {
   /// let index = list.push_back(0);
   /// assert_eq!(list.get(index), Some(&0));
   /// ```
-  pub fn push_back(&mut self, value: EntryData) -> Index<EntryData> {
+  pub fn push_back(&mut self, value: T) -> Index<T> {
     let tail_index = match self.tail() {
       Some(index) => index,
       None => return self.insert_empty(value),
@@ -901,7 +893,7 @@ impl<EntryData> VecList<EntryData> {
   /// let index = list.push_front(0);
   /// assert_eq!(list.get(index), Some(&0));
   /// ```
-  pub fn push_front(&mut self, value: EntryData) -> Index<EntryData> {
+  pub fn push_front(&mut self, value: T) -> Index<T> {
     let head_index = match self.head() {
       Some(index) => index,
       None => return self.insert_empty(value),
@@ -929,7 +921,7 @@ impl<EntryData> VecList<EntryData> {
   /// assert_eq!(list.remove(index), Some(0));
   /// assert_eq!(list.remove(index), None);
   /// ```
-  pub fn remove(&mut self, index: Index<EntryData>) -> Option<EntryData> {
+  pub fn remove(&mut self, index: Index<T>) -> Option<T> {
     let (previous_index, next_index) = match &self.entries[index.index] {
       Entry::Occupied(entry) if entry.generation == index.generation => {
         (entry.previous, entry.next)
@@ -947,7 +939,7 @@ impl<EntryData> VecList<EntryData> {
   ///
   /// If the index refers to an index not in the list anymore or if the index has been invalidated, then [`None`] will
   /// be returned and the list will be unaffected.
-  fn remove_entry(&mut self, index: usize) -> Option<OccupiedEntry<EntryData>> {
+  fn remove_entry(&mut self, index: usize) -> Option<OccupiedEntry<T>> {
     let (previous_index, next_index) = match &self.entries[index] {
       Entry::Occupied(entry) => (entry.previous, entry.next),
       Entry::Vacant(_) => return None,
@@ -969,7 +961,7 @@ impl<EntryData> VecList<EntryData> {
     previous_index: Option<usize>,
     index: usize,
     next_index: Option<usize>,
-  ) -> OccupiedEntry<EntryData> {
+  ) -> OccupiedEntry<T> {
     let head_index = self.head().expect("expected head index");
     let tail_index = self.tail().expect("expected tail index");
     let vacant_head = self.vacant_head();
@@ -1055,7 +1047,7 @@ impl<EntryData> VecList<EntryData> {
   /// ```
   pub fn retain<Predicate>(&mut self, mut predicate: Predicate)
   where
-    Predicate: FnMut(&mut EntryData) -> bool,
+    Predicate: FnMut(&mut T) -> bool,
   {
     let mut next_index = self.head();
 
@@ -1123,16 +1115,16 @@ impl<EntryData> VecList<EntryData> {
   }
 }
 
-impl<EntryData> Debug for VecList<EntryData>
+impl<T> Debug for VecList<T>
 where
-  EntryData: Debug,
+  T: Debug,
 {
   fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
     formatter.debug_list().entries(self.iter()).finish()
   }
 }
 
-impl<EntryData> Default for VecList<EntryData> {
+impl<T> Default for VecList<T> {
   fn default() -> Self {
     VecList {
       entries: Vec::default(),
@@ -1145,12 +1137,12 @@ impl<EntryData> Default for VecList<EntryData> {
   }
 }
 
-impl<EntryData> Eq for VecList<EntryData> where EntryData: Eq {}
+impl<T> Eq for VecList<T> where T: Eq {}
 
-impl<EntryData> Extend<EntryData> for VecList<EntryData> {
+impl<T> Extend<T> for VecList<T> {
   fn extend<Iter>(&mut self, iter: Iter)
   where
-    Iter: IntoIterator<Item = EntryData>,
+    Iter: IntoIterator<Item = T>,
   {
     let iter = iter.into_iter();
     self.reserve(iter.size_hint().0);
@@ -1161,22 +1153,22 @@ impl<EntryData> Extend<EntryData> for VecList<EntryData> {
   }
 }
 
-impl<'entries, EntryData> Extend<&'entries EntryData> for VecList<EntryData>
+impl<'a, T> Extend<&'a T> for VecList<T>
 where
-  EntryData: 'entries + Copy,
+  T: 'a + Copy,
 {
   fn extend<Iter>(&mut self, iter: Iter)
   where
-    Iter: IntoIterator<Item = &'entries EntryData>,
+    Iter: IntoIterator<Item = &'a T>,
   {
     self.extend(iter.into_iter().copied());
   }
 }
 
-impl<EntryData> FromIterator<EntryData> for VecList<EntryData> {
+impl<T> FromIterator<T> for VecList<T> {
   fn from_iter<Iter>(iter: Iter) -> Self
   where
-    Iter: IntoIterator<Item = EntryData>,
+    Iter: IntoIterator<Item = T>,
   {
     let mut list = VecList::new();
     list.extend(iter);
@@ -1184,9 +1176,9 @@ impl<EntryData> FromIterator<EntryData> for VecList<EntryData> {
   }
 }
 
-impl<EntryData> Hash for VecList<EntryData>
+impl<T> Hash for VecList<T>
 where
-  EntryData: Hash,
+  T: Hash,
 {
   fn hash<StateHasher>(&self, state: &mut StateHasher)
   where
@@ -1200,23 +1192,23 @@ where
   }
 }
 
-impl<EntryData> ops::Index<Index<EntryData>> for VecList<EntryData> {
-  type Output = EntryData;
+impl<T> ops::Index<Index<T>> for VecList<T> {
+  type Output = T;
 
-  fn index(&self, index: Index<EntryData>) -> &Self::Output {
+  fn index(&self, index: Index<T>) -> &Self::Output {
     self.get(index).expect("expected entry at index")
   }
 }
 
-impl<EntryData> ops::IndexMut<Index<EntryData>> for VecList<EntryData> {
-  fn index_mut(&mut self, index: Index<EntryData>) -> &mut Self::Output {
+impl<T> ops::IndexMut<Index<T>> for VecList<T> {
+  fn index_mut(&mut self, index: Index<T>) -> &mut Self::Output {
     self.get_mut(index).expect("expected entry at index")
   }
 }
 
-impl<EntryData> IntoIterator for VecList<EntryData> {
-  type IntoIter = IntoIter<EntryData>;
-  type Item = EntryData;
+impl<T> IntoIterator for VecList<T> {
+  type IntoIter = IntoIter<T>;
+  type Item = T;
 
   fn into_iter(self) -> Self::IntoIter {
     IntoIter {
@@ -1228,9 +1220,9 @@ impl<EntryData> IntoIterator for VecList<EntryData> {
   }
 }
 
-impl<'entries, EntryData> IntoIterator for &'entries VecList<EntryData> {
-  type IntoIter = Iter<'entries, EntryData>;
-  type Item = &'entries EntryData;
+impl<'a, T> IntoIterator for &'a VecList<T> {
+  type IntoIter = Iter<'a, T>;
+  type Item = &'a T;
 
   fn into_iter(self) -> Self::IntoIter {
     Iter {
@@ -1242,9 +1234,9 @@ impl<'entries, EntryData> IntoIterator for &'entries VecList<EntryData> {
   }
 }
 
-impl<'entries, EntryData> IntoIterator for &'entries mut VecList<EntryData> {
-  type IntoIter = IterMut<'entries, EntryData>;
-  type Item = &'entries mut EntryData;
+impl<'a, T> IntoIterator for &'a mut VecList<T> {
+  type IntoIter = IterMut<'a, T>;
+  type Item = &'a mut T;
 
   fn into_iter(self) -> Self::IntoIter {
     IterMut {
@@ -1257,54 +1249,81 @@ impl<'entries, EntryData> IntoIterator for &'entries mut VecList<EntryData> {
   }
 }
 
-impl<EntryData> Ord for VecList<EntryData>
+impl<T> Ord for VecList<T>
 where
-  EntryData: Ord,
+  T: Ord,
 {
   fn cmp(&self, other: &Self) -> Ordering {
     self.iter().cmp(other)
   }
 }
 
-impl<EntryData> PartialEq for VecList<EntryData>
+impl<T> PartialEq for VecList<T>
 where
-  EntryData: PartialEq,
+  T: PartialEq,
 {
   fn eq(&self, other: &Self) -> bool {
     self.len() == other.len() && self.iter().eq(other)
   }
 }
 
-impl<EntryData> PartialEq<LinkedList<EntryData>> for VecList<EntryData>
+impl<T> PartialEq<LinkedList<T>> for VecList<T>
 where
-  EntryData: PartialEq,
+  T: PartialEq,
 {
-  fn eq(&self, other: &LinkedList<EntryData>) -> bool {
+  fn eq(&self, other: &LinkedList<T>) -> bool {
     self.len() == other.len() && self.iter().eq(other)
   }
 }
 
-impl<EntryData> PartialEq<Vec<EntryData>> for VecList<EntryData>
+impl<T> PartialEq<VecList<T>> for LinkedList<T>
 where
-  EntryData: PartialEq,
+  T: PartialEq,
 {
-  fn eq(&self, other: &Vec<EntryData>) -> bool {
+  fn eq(&self, other: &VecList<T>) -> bool {
+    other == self
+  }
+}
+
+impl<T> PartialEq<Vec<T>> for VecList<T>
+where
+  T: PartialEq,
+{
+  fn eq(&self, other: &Vec<T>) -> bool {
     self.len() == other.len() && self.iter().eq(other)
   }
 }
 
-impl<'slice, EntryData> PartialEq<&'slice [EntryData]> for VecList<EntryData>
+impl<T> PartialEq<VecList<T>> for Vec<T>
 where
-  EntryData: PartialEq,
+  T: PartialEq,
 {
-  fn eq(&self, other: &&'slice [EntryData]) -> bool {
+  fn eq(&self, other: &VecList<T>) -> bool {
+    other == self
+  }
+}
+
+impl<'a, T> PartialEq<&'a [T]> for VecList<T>
+where
+  T: PartialEq,
+{
+  fn eq(&self, other: &&'a [T]) -> bool {
     self.len() == other.len() && self.iter().eq(other.iter())
   }
 }
 
-impl<EntryData> PartialOrd for VecList<EntryData>
+impl<T> PartialEq<VecList<T>> for &'_ [T]
 where
-  EntryData: PartialOrd<EntryData>,
+  T: PartialEq,
+{
+  fn eq(&self, other: &VecList<T>) -> bool {
+    other == self
+  }
+}
+
+impl<T> PartialOrd for VecList<T>
+where
+  T: PartialOrd<T>,
 {
   fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
     self.iter().partial_cmp(other)
@@ -1314,7 +1333,7 @@ where
 /// A wrapper type that indicates an index into the list.
 ///
 /// This index may be invalidated by operations on the list itself.
-pub struct Index<EntryData> {
+pub struct Index<T> {
   /// The generation of the entry currently at this index. This is used to avoid the ABA problem.
   generation: u64,
 
@@ -1322,10 +1341,10 @@ pub struct Index<EntryData> {
   index: usize,
 
   /// This type is parameterized on the entry data type to avoid indices being used across differently typed lists.
-  phantom: PhantomData<EntryData>,
+  phantom: PhantomData<T>,
 }
 
-impl<EntryData> Clone for Index<EntryData> {
+impl<T> Clone for Index<T> {
   fn clone(&self) -> Self {
     Index {
       generation: self.generation,
@@ -1335,9 +1354,9 @@ impl<EntryData> Clone for Index<EntryData> {
   }
 }
 
-impl<EntryData> Copy for Index<EntryData> {}
+impl<T> Copy for Index<T> {}
 
-impl<EntryData> Debug for Index<EntryData> {
+impl<T> Debug for Index<T> {
   fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
     formatter
       .debug_tuple("Index")
@@ -1347,9 +1366,9 @@ impl<EntryData> Debug for Index<EntryData> {
   }
 }
 
-impl<EntryData> Eq for Index<EntryData> {}
+impl<T> Eq for Index<T> {}
 
-impl<EntryData> Hash for Index<EntryData> {
+impl<T> Hash for Index<T> {
   fn hash<StateHasher>(&self, hasher: &mut StateHasher)
   where
     StateHasher: Hasher,
@@ -1359,16 +1378,16 @@ impl<EntryData> Hash for Index<EntryData> {
   }
 }
 
-impl<EntryData> PartialEq for Index<EntryData> {
+impl<T> PartialEq for Index<T> {
   fn eq(&self, other: &Self) -> bool {
     self.generation == other.generation && self.index == other.index
   }
 }
 
-impl<EntryData> Index<EntryData> {
+impl<T> Index<T> {
   /// Convenience function for creating new index.
   #[must_use]
-  pub(self) fn new(index: usize, generation: u64) -> Index<EntryData> {
+  pub(self) fn new(index: usize, generation: u64) -> Index<T> {
     Index {
       generation,
       index,
@@ -1379,22 +1398,22 @@ impl<EntryData> Index<EntryData> {
 
 /// An entry in the list. This can be either occupied or vacant.
 #[derive(Clone)]
-enum Entry<EntryData> {
+enum Entry<T> {
   /// An occupied entry contains actual entry data inserted by the user.
-  Occupied(OccupiedEntry<EntryData>),
+  Occupied(OccupiedEntry<T>),
 
   /// A vacant entry is one that can be reused.
   Vacant(VacantEntry),
 }
 
-impl<EntryData> Entry<EntryData> {
+impl<T> Entry<T> {
   /// Returns the occupied entry by moving it out of the entry.
   ///
   /// # Panics
   ///
   /// Panics if the variant is actually [`Entry::Vacant`].
   #[must_use]
-  pub fn occupied(self) -> OccupiedEntry<EntryData> {
+  pub fn occupied(self) -> OccupiedEntry<T> {
     match self {
       Entry::Occupied(entry) => entry,
       Entry::Vacant(_) => panic!("expected occupied entry"),
@@ -1407,7 +1426,7 @@ impl<EntryData> Entry<EntryData> {
   ///
   /// Panics if the variant is actually [`Entry::Vacant`].
   #[must_use]
-  pub fn occupied_ref(&self) -> &OccupiedEntry<EntryData> {
+  pub fn occupied_ref(&self) -> &OccupiedEntry<T> {
     match self {
       Entry::Occupied(entry) => entry,
       Entry::Vacant(_) => panic!("expected occupied entry"),
@@ -1420,7 +1439,7 @@ impl<EntryData> Entry<EntryData> {
   ///
   /// Panics if the variant is actually [`Entry::Vacant`].
   #[must_use]
-  pub fn occupied_mut(&mut self) -> &mut OccupiedEntry<EntryData> {
+  pub fn occupied_mut(&mut self) -> &mut OccupiedEntry<T> {
     match self {
       Entry::Occupied(entry) => entry,
       Entry::Vacant(_) => panic!("expected occupied entry"),
@@ -1443,7 +1462,7 @@ impl<EntryData> Entry<EntryData> {
 
 /// An occupied entry in the list.
 #[derive(Clone)]
-struct OccupiedEntry<EntryData> {
+struct OccupiedEntry<T> {
   /// The generation of when this entry was inserted. This is used to avoid the ABA problem.
   generation: u64,
 
@@ -1454,18 +1473,18 @@ struct OccupiedEntry<EntryData> {
   previous: Option<usize>,
 
   /// The actual value being stored in this entry.
-  value: EntryData,
+  value: T,
 }
 
-impl<EntryData> OccupiedEntry<EntryData> {
+impl<T> OccupiedEntry<T> {
   /// Convenience function for creating a new occupied entry.
   #[must_use]
   pub fn new(
     generation: u64,
     previous: Option<usize>,
     next: Option<usize>,
-    value: EntryData,
-  ) -> OccupiedEntry<EntryData> {
+    value: T,
+  ) -> OccupiedEntry<T> {
     OccupiedEntry {
       generation,
       next,
@@ -1491,12 +1510,12 @@ impl VacantEntry {
 }
 
 /// An iterator that yields and removes all entries from the list.
-pub struct Drain<'entries, EntryData> {
+pub struct Drain<'a, T> {
   /// The index of the head of the unvisited portion of the list.
   head: Option<usize>,
 
   /// A reference to the entry list.
-  list: &'entries mut VecList<EntryData>,
+  list: &'a mut VecList<T>,
 
   /// The number of entries that have not been visited.
   remaining: usize,
@@ -1505,10 +1524,10 @@ pub struct Drain<'entries, EntryData> {
   tail: Option<usize>,
 }
 
-impl<EntryData> Drain<'_, EntryData> {
+impl<T> Drain<'_, T> {
   /// Creates an iterator that yields immutable references to entries in the list.
   #[must_use]
-  pub fn iter(&self) -> Iter<'_, EntryData> {
+  pub fn iter(&self) -> Iter<'_, T> {
     Iter {
       entries: &self.list.entries,
       head: self.head,
@@ -1518,9 +1537,9 @@ impl<EntryData> Drain<'_, EntryData> {
   }
 }
 
-impl<EntryData> Debug for Drain<'_, EntryData>
+impl<T> Debug for Drain<'_, T>
 where
-  EntryData: Debug,
+  T: Debug,
 {
   fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
     formatter.write_str("Drain(")?;
@@ -1529,7 +1548,7 @@ where
   }
 }
 
-impl<EntryData> DoubleEndedIterator for Drain<'_, EntryData> {
+impl<T> DoubleEndedIterator for Drain<'_, T> {
   fn next_back(&mut self) -> Option<Self::Item> {
     if self.remaining == 0 {
       None
@@ -1547,18 +1566,18 @@ impl<EntryData> DoubleEndedIterator for Drain<'_, EntryData> {
   }
 }
 
-impl<EntryData> Drop for Drain<'_, EntryData> {
+impl<T> Drop for Drain<'_, T> {
   fn drop(&mut self) {
     self.list.clear();
   }
 }
 
-impl<EntryData> ExactSizeIterator for Drain<'_, EntryData> {}
+impl<T> ExactSizeIterator for Drain<'_, T> {}
 
-impl<EntryData> FusedIterator for Drain<'_, EntryData> {}
+impl<T> FusedIterator for Drain<'_, T> {}
 
-impl<EntryData> Iterator for Drain<'_, EntryData> {
-  type Item = EntryData;
+impl<T> Iterator for Drain<'_, T> {
+  type Item = T;
 
   fn next(&mut self) -> Option<Self::Item> {
     if self.remaining == 0 {
@@ -1582,9 +1601,9 @@ impl<EntryData> Iterator for Drain<'_, EntryData> {
 }
 
 /// An iterator that yields all indices in the list.
-pub struct Indices<'entries, EntryData> {
+pub struct Indices<'a, T> {
   /// A reference to the actual storage for the entry list.
-  entries: &'entries Vec<Entry<EntryData>>,
+  entries: &'a Vec<Entry<T>>,
 
   /// The index of the head of the unvisited portion of the list.
   head: Option<usize>,
@@ -1596,7 +1615,7 @@ pub struct Indices<'entries, EntryData> {
   tail: Option<usize>,
 }
 
-impl<EntryData> Clone for Indices<'_, EntryData> {
+impl<T> Clone for Indices<'_, T> {
   fn clone(&self) -> Self {
     Indices {
       entries: self.entries,
@@ -1607,9 +1626,9 @@ impl<EntryData> Clone for Indices<'_, EntryData> {
   }
 }
 
-impl<EntryData> Debug for Indices<'_, EntryData>
+impl<T> Debug for Indices<'_, T>
 where
-  EntryData: Debug,
+  T: Debug,
 {
   fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
     formatter.write_str("Indices(")?;
@@ -1618,7 +1637,7 @@ where
   }
 }
 
-impl<EntryData> DoubleEndedIterator for Indices<'_, EntryData> {
+impl<T> DoubleEndedIterator for Indices<'_, T> {
   fn next_back(&mut self) -> Option<Self::Item> {
     if self.remaining == 0 {
       None
@@ -1634,12 +1653,12 @@ impl<EntryData> DoubleEndedIterator for Indices<'_, EntryData> {
   }
 }
 
-impl<EntryData> ExactSizeIterator for Indices<'_, EntryData> {}
+impl<T> ExactSizeIterator for Indices<'_, T> {}
 
-impl<EntryData> FusedIterator for Indices<'_, EntryData> {}
+impl<T> FusedIterator for Indices<'_, T> {}
 
-impl<EntryData> Iterator for Indices<'_, EntryData> {
-  type Item = Index<EntryData>;
+impl<T> Iterator for Indices<'_, T> {
+  type Item = Index<T>;
 
   fn next(&mut self) -> Option<Self::Item> {
     if self.remaining == 0 {
@@ -1662,12 +1681,12 @@ impl<EntryData> Iterator for Indices<'_, EntryData> {
 
 /// An iterator that moves all entries out of the entry list.
 #[derive(Clone)]
-pub struct IntoIter<EntryData> {
+pub struct IntoIter<T> {
   /// The index of the head of the unvisited portion of the list.
   head: Option<usize>,
 
   /// The entry list from which entries are yielded.
-  list: VecList<EntryData>,
+  list: VecList<T>,
 
   /// The number of entries that have not been visited.
   remaining: usize,
@@ -1676,10 +1695,10 @@ pub struct IntoIter<EntryData> {
   tail: Option<usize>,
 }
 
-impl<EntryData> IntoIter<EntryData> {
+impl<T> IntoIter<T> {
   /// Creates an iterator that yields immutable references to entries in the list.
   #[must_use]
-  pub fn iter(&self) -> Iter<'_, EntryData> {
+  pub fn iter(&self) -> Iter<'_, T> {
     Iter {
       entries: &self.list.entries,
       head: self.head,
@@ -1689,9 +1708,9 @@ impl<EntryData> IntoIter<EntryData> {
   }
 }
 
-impl<EntryData> Debug for IntoIter<EntryData>
+impl<T> Debug for IntoIter<T>
 where
-  EntryData: Debug,
+  T: Debug,
 {
   fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
     formatter.write_str("IntoIter(")?;
@@ -1700,7 +1719,7 @@ where
   }
 }
 
-impl<EntryData> DoubleEndedIterator for IntoIter<EntryData> {
+impl<T> DoubleEndedIterator for IntoIter<T> {
   fn next_back(&mut self) -> Option<Self::Item> {
     if self.remaining == 0 {
       None
@@ -1718,12 +1737,12 @@ impl<EntryData> DoubleEndedIterator for IntoIter<EntryData> {
   }
 }
 
-impl<EntryData> ExactSizeIterator for IntoIter<EntryData> {}
+impl<T> ExactSizeIterator for IntoIter<T> {}
 
-impl<EntryData> FusedIterator for IntoIter<EntryData> {}
+impl<T> FusedIterator for IntoIter<T> {}
 
-impl<EntryData> Iterator for IntoIter<EntryData> {
-  type Item = EntryData;
+impl<T> Iterator for IntoIter<T> {
+  type Item = T;
 
   fn next(&mut self) -> Option<Self::Item> {
     if self.remaining == 0 {
@@ -1747,9 +1766,9 @@ impl<EntryData> Iterator for IntoIter<EntryData> {
 }
 
 /// An iterator that yields immutable references to entries in the list.
-pub struct Iter<'entries, EntryData> {
+pub struct Iter<'a, T> {
   /// A reference to the actual storage for the entry list.
-  entries: &'entries Vec<Entry<EntryData>>,
+  entries: &'a Vec<Entry<T>>,
 
   /// The index of the head of the unvisited portion of the list.
   head: Option<usize>,
@@ -1761,8 +1780,8 @@ pub struct Iter<'entries, EntryData> {
   tail: Option<usize>,
 }
 
-impl<'entries, EntryData> Clone for Iter<'entries, EntryData> {
-  fn clone(&self) -> Iter<'entries, EntryData> {
+impl<'a, T> Clone for Iter<'a, T> {
+  fn clone(&self) -> Iter<'a, T> {
     Iter {
       entries: self.entries,
       head: self.head,
@@ -1772,9 +1791,9 @@ impl<'entries, EntryData> Clone for Iter<'entries, EntryData> {
   }
 }
 
-impl<EntryData> Debug for Iter<'_, EntryData>
+impl<T> Debug for Iter<'_, T>
 where
-  EntryData: Debug,
+  T: Debug,
 {
   fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
     formatter.write_str("Iter(")?;
@@ -1783,7 +1802,7 @@ where
   }
 }
 
-impl<EntryData> DoubleEndedIterator for Iter<'_, EntryData> {
+impl<T> DoubleEndedIterator for Iter<'_, T> {
   fn next_back(&mut self) -> Option<Self::Item> {
     if self.remaining == 0 {
       None
@@ -1798,12 +1817,12 @@ impl<EntryData> DoubleEndedIterator for Iter<'_, EntryData> {
   }
 }
 
-impl<EntryData> ExactSizeIterator for Iter<'_, EntryData> {}
+impl<T> ExactSizeIterator for Iter<'_, T> {}
 
-impl<EntryData> FusedIterator for Iter<'_, EntryData> {}
+impl<T> FusedIterator for Iter<'_, T> {}
 
-impl<'entries, EntryData> Iterator for Iter<'entries, EntryData> {
-  type Item = &'entries EntryData;
+impl<'a, T> Iterator for Iter<'a, T> {
+  type Item = &'a T;
 
   fn next(&mut self) -> Option<Self::Item> {
     if self.remaining == 0 {
@@ -1824,14 +1843,14 @@ impl<'entries, EntryData> Iterator for Iter<'entries, EntryData> {
 }
 
 /// An iterator that yields mutable references to entries in the list.
-pub struct IterMut<'entries, EntryData> {
-  entries: *mut Vec<Entry<EntryData>>,
+pub struct IterMut<'a, T> {
+  entries: *mut Vec<Entry<T>>,
 
   /// The index of the head of the unvisited portion of the list.
   head: Option<usize>,
 
   /// Because [`IterMut::entries`] is a pointer, we need to have a phantom data here for the lifetime parameter.
-  phantom: PhantomData<&'entries mut Vec<Entry<EntryData>>>,
+  phantom: PhantomData<&'a mut Vec<Entry<T>>>,
 
   /// The number of entries that have not been visited.
   remaining: usize,
@@ -1840,10 +1859,10 @@ pub struct IterMut<'entries, EntryData> {
   tail: Option<usize>,
 }
 
-impl<EntryData> IterMut<'_, EntryData> {
+impl<T> IterMut<'_, T> {
   /// Creates an iterator that yields immutable references to entries in the list.
   #[must_use]
-  pub fn iter(&self) -> Iter<'_, EntryData> {
+  pub fn iter(&self) -> Iter<'_, T> {
     Iter {
       entries: unsafe { &*self.entries },
       head: self.head,
@@ -1853,9 +1872,9 @@ impl<EntryData> IterMut<'_, EntryData> {
   }
 }
 
-impl<EntryData> Debug for IterMut<'_, EntryData>
+impl<T> Debug for IterMut<'_, T>
 where
-  EntryData: Debug,
+  T: Debug,
 {
   fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
     formatter.write_str("IterMut(")?;
@@ -1864,7 +1883,7 @@ where
   }
 }
 
-impl<EntryData> DoubleEndedIterator for IterMut<'_, EntryData> {
+impl<T> DoubleEndedIterator for IterMut<'_, T> {
   fn next_back(&mut self) -> Option<Self::Item> {
     if self.remaining == 0 {
       None
@@ -1879,12 +1898,12 @@ impl<EntryData> DoubleEndedIterator for IterMut<'_, EntryData> {
   }
 }
 
-impl<EntryData> ExactSizeIterator for IterMut<'_, EntryData> {}
+impl<T> ExactSizeIterator for IterMut<'_, T> {}
 
-impl<EntryData> FusedIterator for IterMut<'_, EntryData> {}
+impl<T> FusedIterator for IterMut<'_, T> {}
 
-impl<'entries, EntryData> Iterator for IterMut<'entries, EntryData> {
-  type Item = &'entries mut EntryData;
+impl<'a, T> Iterator for IterMut<'a, T> {
+  type Item = &'a mut T;
 
   fn next(&mut self) -> Option<Self::Item> {
     if self.remaining == 0 {
@@ -1904,9 +1923,9 @@ impl<'entries, EntryData> Iterator for IterMut<'entries, EntryData> {
   }
 }
 
-unsafe impl<EntryData> Send for IterMut<'_, EntryData> where EntryData: Send {}
+unsafe impl<T> Send for IterMut<'_, T> where T: Send {}
 
-unsafe impl<EntryData> Sync for IterMut<'_, EntryData> where EntryData: Sync {}
+unsafe impl<T> Sync for IterMut<'_, T> where T: Sync {}
 
 /// Creates the initial generation seeded by the current time.
 #[must_use]
