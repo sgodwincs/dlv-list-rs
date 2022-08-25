@@ -69,9 +69,17 @@ where
 #[cfg(test)]
 mod test {
   use coverage_helper::test;
-  use serde_test::{assert_tokens, Token};
+  use serde_test::{assert_de_tokens_error, assert_tokens, Token};
 
   use super::*;
+
+  #[test]
+  fn test_de_error() {
+    assert_de_tokens_error::<VecList<u32>>(
+      &[Token::Map { len: Some(0) }],
+      "invalid type: map, expected a sequence",
+    );
+  }
 
   #[test]
   fn test_ser_de_empty() {
