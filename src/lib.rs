@@ -18,13 +18,12 @@ use std::{
 
 /// A semi-doubly linked list implemented with a vector.
 ///
-/// This provides many of the benefits of an actual linked list with a few tradeoffs. First, due to
-/// the use of an underlying vector, an individual insert operation may be O(n) due to allocating
-/// more space for the vector. However, it is amortized O(1) and it avoids the frequent allocation
-/// that traditional linked lists suffer from.
+/// This provides many of the benefits of an actual linked list with a few tradeoffs. First, due to the use of an
+/// underlying vector, an individual insert operation may be O(n) due to allocating more space for the vector. However,
+/// it is amortized O(1) and it avoids the frequent allocations that traditional linked lists suffer from.
 ///
-/// Another tradeoff is that extending a traditional linked list with another list is O(1) but a
-/// vector based implementation is O(n). Splicing has a similar disadvantage.
+/// Another tradeoff is that extending a traditional linked list with another list is O(1) but a vector based
+/// implementation is O(n). Splicing has a similar disadvantage.
 ///
 /// Lastly, the vector based implementation is likely to have better cache locality in general.
 #[derive(Clone)]
@@ -38,8 +37,8 @@ pub struct VecList<EntryData> {
   /// The index of the head of the list.
   head: Option<NonZeroUsize>,
 
-  /// The length of the list since we cannot rely on the length of [`VecList::entries`] because
-  /// it includes unused indices.
+  /// The length of the list since we cannot rely on the length of [`VecList::entries`] because it includes unused
+  /// indices.
   length: usize,
 
   /// The index of the tail of the list.
@@ -176,8 +175,7 @@ impl<EntryData> VecList<EntryData> {
 
   /// Creates a draining iterator that removes all values from the list and yields them in order.
   ///
-  /// All values are removed even if the iterator is only partially consumed or not consumed at
-  /// all.
+  /// All values are removed even if the iterator is only partially consumed or not consumed at all.
   ///
   /// # Examples
   ///
@@ -266,8 +264,8 @@ impl<EntryData> VecList<EntryData> {
 
   /// Returns an immutable reference to the value at the given index.
   ///
-  /// If the index refers to an index not in the list anymore or if the index has been
-  /// invalidated, then [`None`] will be returned.
+  /// If the index refers to an index not in the list anymore or if the index has been invalidated, then [`None`] will
+  /// be returned.
   ///
   /// Complexity: O(1)
   ///
@@ -293,8 +291,8 @@ impl<EntryData> VecList<EntryData> {
 
   /// Returns a mutable reference to the value at the given index.
   ///
-  /// If the index refers to an index not in the list anymore or if the index has been
-  /// invalidated, then [`None`] will be returned.
+  /// If the index refers to an index not in the list anymore or if the index has been invalidated, then [`None`] will
+  /// be returned.
   ///
   /// Complexity: O(1)
   ///
@@ -319,8 +317,8 @@ impl<EntryData> VecList<EntryData> {
 
   /// Returns the index of the value next to the value at the given index.
   ///
-  /// If the index refers to an index not in the list anymore or if the index has been
-  /// invalidated, then [`None`] will be returned.
+  /// If the index refers to an index not in the list anymore or if the index has been invalidated, then [`None`] will
+  /// be returned.
   ///
   /// Complexity: O(1)
   ///
@@ -351,8 +349,8 @@ impl<EntryData> VecList<EntryData> {
 
   /// Returns the index of the value previous to the value at the given index.
   ///
-  /// If the index refers to an index not in the list anymore or if the index has been
-  /// invalidated, then [`None`] will be returned.
+  /// If the index refers to an index not in the list anymore or if the index has been invalidated, then [`None`] will
+  /// be returned.
   ///
   /// Complexity: O(1)
   ///
@@ -425,9 +423,9 @@ impl<EntryData> VecList<EntryData> {
   ///
   /// # Panics
   ///
-  /// Panics if the index refers to an index not in the list anymore or if the index has been
-  /// invalidated. This is enforced because this function will consume the value to be inserted,
-  /// and if it cannot be inserted (due to the index not being valid), then it will be lost.
+  /// Panics if the index refers to an index not in the list anymore or if the index has been invalidated. This is
+  /// enforced because this function will consume the value to be inserted, and if it cannot be inserted (due to the
+  /// index not being valid), then it will be lost.
   ///
   /// Also panics if the new capacity overflows `usize`.
   ///
@@ -472,9 +470,9 @@ impl<EntryData> VecList<EntryData> {
   ///
   /// # Panics
   ///
-  /// Panics if the index refers to an index not in the list anymore or if the index has been
-  /// invalidated. This is enforced because this function will consume the value to be inserted,
-  /// and if it cannot be inserted (due to the index not being valid), then it will be lost.
+  /// Panics if the index refers to an index not in the list anymore or if the index has been invalidated. This is
+  /// enforced because this function will consume the value to be inserted, and if it cannot be inserted (due to the
+  /// index not being valid), then it will be lost.
   ///
   /// Also panics if the new capacity overflows `usize`.
   ///
@@ -675,8 +673,8 @@ impl<EntryData> VecList<EntryData> {
     VecList::default()
   }
 
-  /// Reorganizes the existing values to ensure maximum cache locality and shrinks the list such
-  /// that the capacity is exactly [`minimum_capacity`].
+  /// Reorganizes the existing values to ensure maximum cache locality and shrinks the list such that the capacity is
+  /// exactly [`minimum_capacity`].
   ///
   /// This function can be used to actually increase the capacity of the list.
   ///
@@ -767,8 +765,8 @@ impl<EntryData> VecList<EntryData> {
     map
   }
 
-  /// Reorganizes the existing values to ensure maximum cache locality and shrinks the list such
-  /// that no additional capacity exists.
+  /// Reorganizes the existing values to ensure maximum cache locality and shrinks the list such that no additional
+  /// capacity exists.
   ///
   /// This is equivalent to calling [`VecList::pack_to`] with the current length.
   ///
@@ -916,8 +914,8 @@ impl<EntryData> VecList<EntryData> {
 
   /// Removes and returns the value at the given index, if it exists.
   ///
-  /// If the index refers to an index not in the list anymore or if the index has been
-  /// invalidated, then [`None`] will be returned and the list will be unaffected.
+  /// If the index refers to an index not in the list anymore or if the index has been invalidated, then [`None`] will
+  /// be returned and the list will be unaffected.
   ///
   /// Complexity: O(1)
   ///
@@ -947,8 +945,8 @@ impl<EntryData> VecList<EntryData> {
 
   /// Removes and returns the entry at the given index, if it exists.
   ///
-  /// If the index refers to an index not in the list anymore or if the index has been
-  /// invalidated, then [`None`] will be returned and the list will be unaffected.
+  /// If the index refers to an index not in the list anymore or if the index has been invalidated, then [`None`] will
+  /// be returned and the list will be unaffected.
   fn remove_entry(&mut self, index: usize) -> Option<OccupiedEntry<EntryData>> {
     let (previous_index, next_index) = match &self.entries[index] {
       Entry::Occupied(entry) => (entry.previous, entry.next),
@@ -964,8 +962,8 @@ impl<EntryData> VecList<EntryData> {
   ///
   /// # Panics
   ///
-  /// Panics if called when the list is empty. Behavior is undefined if provided indices do not
-  /// follow the expected constraints.
+  /// Panics if called when the list is empty. Behavior is undefined if provided indices do not follow the expected
+  /// constraints.
   fn remove_helper(
     &mut self,
     previous_index: Option<usize>,
@@ -1011,9 +1009,9 @@ impl<EntryData> VecList<EntryData> {
 
   /// Reserves capacity for the given expected size increase.
   ///
-  /// The collection may reserve more space to avoid frequent reallocations. After calling this
-  /// function, capacity will be greater than or equal to `self.len() + additional_capacity`.
-  /// Does nothing if the current capacity is already sufficient.
+  /// The collection may reserve more space to avoid frequent reallocations. After calling this function, capacity will
+  /// be greater than or equal to `self.len() + additional_capacity`. Does nothing if the current capacity is already
+  /// sufficient.
   ///
   /// # Panics
   ///
@@ -1323,8 +1321,7 @@ pub struct Index<EntryData> {
   /// The actual index into the entry list.
   index: usize,
 
-  /// This type is parameterized on the entry data type to avoid indices being used across
-  /// differently typed lists.
+  /// This type is parameterized on the entry data type to avoid indices being used across differently typed lists.
   phantom: PhantomData<EntryData>,
 }
 
@@ -1833,8 +1830,7 @@ pub struct IterMut<'entries, EntryData> {
   /// The index of the head of the unvisited portion of the list.
   head: Option<usize>,
 
-  /// Because [`IterMut::entries`] is a pointer, we need to have a phantom data here for the
-  /// lifetime parameter.
+  /// Because [`IterMut::entries`] is a pointer, we need to have a phantom data here for the lifetime parameter.
   phantom: PhantomData<&'entries mut Vec<Entry<EntryData>>>,
 
   /// The number of entries that have not been visited.
