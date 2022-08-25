@@ -12,3 +12,6 @@ keywords = ["vector", "linked", "list"]
 
 [dependencies]
 serde = { version = "1", optional = true }
+
+[dev-dependencies]
+coverage-helper = "0.1.0"

@@ -3,6 +3,7 @@
 //! See [`VecList`] for more information.
 
 #![allow(unsafe_code)]
+#![cfg_attr(coverage_nightly, feature(no_coverage))]
 
 use std::{
   cmp::Ordering,
@@ -1956,6 +1957,8 @@ fn create_initial_generation() -> u64 {
 #[allow(unused_results)]
 #[cfg(test)]
 mod test {
+  use coverage_helper::test;
+
   use super::*;
 
   #[test]
