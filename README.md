@@ -6,6 +6,10 @@
 
 Semi-doubly linked list implemented using a vector.
 
+# Features
+
+ - `serde` for (de)serialization.
+
 ## License
 
 Licensed under either of
