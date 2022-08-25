@@ -17,6 +17,9 @@ use std::{
   ops,
 };
 
+#[cfg(feature = "serde")]
+mod serde;
+
 /// A semi-doubly linked list implemented with a vector.
 ///
 /// This provides many of the benefits of an actual linked list with a few tradeoffs. First, due to the use of an
