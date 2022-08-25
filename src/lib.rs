@@ -1,3 +1,9 @@
+//! Crate that implements a semi-doubly linked list via a vector.
+//!
+//! See [`VecList`] for more information.
+
+#![allow(unsafe_code)]
+
 use std::{
   cmp::Ordering,
   collections::{hash_map::RandomState, HashMap, LinkedList},
@@ -188,7 +194,7 @@ impl<EntryData> VecList<EntryData> {
   /// println!("{}", list.len());
   /// assert!(list.is_empty());
   /// ```
-  pub fn drain(&mut self) -> Drain<EntryData> {
+  pub fn drain(&mut self) -> Drain<'_, EntryData> {
     Drain {
       head: self.head(),
       remaining: self.length,
@@ -390,7 +396,7 @@ impl<EntryData> VecList<EntryData> {
   ///
   /// assert_eq!(indices.next(), None);
   /// ```
-  pub fn indices(&self) -> Indices<EntryData> {
+  pub fn indices(&self) -> Indices<'_, EntryData> {
     Indices {
       entries: &self.entries,
       head: self.head(),
@@ -580,7 +586,7 @@ impl<EntryData> VecList<EntryData> {
   /// assert_eq!(iter.next(), Some(&-10));
   /// assert_eq!(iter.next(), None);
   /// ```
-  pub fn iter(&self) -> Iter<EntryData> {
+  pub fn iter(&self) -> Iter<'_, EntryData> {
     Iter {
       entries: &self.entries,
       head: self.head(),
@@ -609,9 +615,9 @@ impl<EntryData> VecList<EntryData> {
   /// assert_eq!(iter.next(), Some(&mut -10));
   /// assert_eq!(iter.next(), None);
   /// ```
-  pub fn iter_mut(&mut self) -> IterMut<EntryData> {
+  pub fn iter_mut(&mut self) -> IterMut<'_, EntryData> {
     IterMut {
-      entries: &mut self.entries as *mut _,
+      entries: &mut self.entries,
       head: self.head(),
       phantom: PhantomData,
       remaining: self.length,
@@ -711,7 +717,8 @@ impl<EntryData> VecList<EntryData> {
     while let Some(index) = next_index {
       let mut entry = self.remove_entry(index).expect("expected occupied entry");
       next_index = entry.next;
-      map.insert(
+
+      let _ = map.insert(
         Index::new(index, entry.generation),
         Index::new(count, generation),
       );
@@ -1045,7 +1052,7 @@ impl<EntryData> VecList<EntryData> {
       next_index = entry.next;
 
       if !predicate(&mut entry.value) {
-        self.remove_entry(index);
+        let _ = self.remove_entry(index);
       }
     }
   }
@@ -1105,7 +1112,7 @@ impl<EntryData> Debug for VecList<EntryData>
 where
   EntryData: Debug,
 {
-  fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+  fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
     formatter.debug_list().entries(self.iter()).finish()
   }
 }
@@ -1134,7 +1141,7 @@ impl<EntryData> Extend<EntryData> for VecList<EntryData> {
     self.reserve(iter.size_hint().0);
 
     for value in iter {
-      self.push_back(value);
+      let _ = self.push_back(value);
     }
   }
 }
@@ -1226,7 +1233,7 @@ impl<'entries, EntryData> IntoIterator for &'entries mut VecList<EntryData> {
 
   fn into_iter(self) -> Self::IntoIter {
     IterMut {
-      entries: &mut self.entries as *mut _,
+      entries: &mut self.entries,
       head: self.head(),
       phantom: PhantomData,
       remaining: self.length,
@@ -1317,7 +1324,7 @@ impl<EntryData> Clone for Index<EntryData> {
 impl<EntryData> Copy for Index<EntryData> {}
 
 impl<EntryData> Debug for Index<EntryData> {
-  fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+  fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
     formatter
       .debug_tuple("Index")
       .field(&self.index)
@@ -1487,7 +1494,7 @@ pub struct Drain<'entries, EntryData> {
 
 impl<EntryData> Drain<'_, EntryData> {
   /// Creates an iterator that yields immutable references to entries in the list.
-  pub fn iter(&self) -> Iter<EntryData> {
+  pub fn iter(&self) -> Iter<'_, EntryData> {
     Iter {
       entries: &self.list.entries,
       head: self.head,
@@ -1501,7 +1508,7 @@ impl<EntryData> Debug for Drain<'_, EntryData>
 where
   EntryData: Debug,
 {
-  fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+  fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
     formatter.write_str("Drain(")?;
     formatter.debug_list().entries(self.iter()).finish()?;
     formatter.write_str(")")
@@ -1590,7 +1597,7 @@ impl<EntryData> Debug for Indices<'_, EntryData>
 where
   EntryData: Debug,
 {
-  fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+  fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
     formatter.write_str("Indices(")?;
     formatter.debug_list().entries(self.clone()).finish()?;
     formatter.write_str(")")
@@ -1657,7 +1664,7 @@ pub struct IntoIter<EntryData> {
 
 impl<EntryData> IntoIter<EntryData> {
   /// Creates an iterator that yields immutable references to entries in the list.
-  pub fn iter(&self) -> Iter<EntryData> {
+  pub fn iter(&self) -> Iter<'_, EntryData> {
     Iter {
       entries: &self.list.entries,
       head: self.head,
@@ -1671,7 +1678,7 @@ impl<EntryData> Debug for IntoIter<EntryData>
 where
   EntryData: Debug,
 {
-  fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+  fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
     formatter.write_str("IntoIter(")?;
     formatter.debug_list().entries(self.iter()).finish()?;
     formatter.write_str(")")
@@ -1754,7 +1761,7 @@ impl<EntryData> Debug for Iter<'_, EntryData>
 where
   EntryData: Debug,
 {
-  fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+  fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
     formatter.write_str("Iter(")?;
     formatter.debug_list().entries(self.clone()).finish()?;
     formatter.write_str(")")
@@ -1821,7 +1828,7 @@ pub struct IterMut<'entries, EntryData> {
 
 impl<EntryData> IterMut<'_, EntryData> {
   /// Creates an iterator that yields immutable references to entries in the list.
-  pub fn iter(&self) -> Iter<EntryData> {
+  pub fn iter(&self) -> Iter<'_, EntryData> {
     Iter {
       entries: unsafe { &*self.entries },
       head: self.head,
@@ -1835,7 +1842,7 @@ impl<EntryData> Debug for IterMut<'_, EntryData>
 where
   EntryData: Debug,
 {
-  fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+  fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
     formatter.write_str("IterMut(")?;
     formatter.debug_list().entries(self.iter()).finish()?;
     formatter.write_str(")")
@@ -1893,6 +1900,7 @@ fn create_initial_generation() -> u64 {
   hasher.finish()
 }
 
+#[allow(unused_results)]
 #[cfg(test)]
 mod test {
   use super::*;
@@ -1903,11 +1911,11 @@ mod test {
 
     check_bounds::<VecList<()>>();
     check_bounds::<Index<()>>();
-    check_bounds::<Drain<()>>();
-    check_bounds::<Indices<()>>();
+    check_bounds::<Drain<'_, ()>>();
+    check_bounds::<Indices<'_, ()>>();
     check_bounds::<IntoIter<()>>();
-    check_bounds::<Iter<()>>();
-    check_bounds::<IterMut<()>>();
+    check_bounds::<Iter<'_, ()>>();
+    check_bounds::<IterMut<'_, ()>>();
   }
 
   #[test]
