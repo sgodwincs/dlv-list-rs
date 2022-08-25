@@ -28,7 +28,7 @@ use std::{
 /// Lastly, the vector based implementation is likely to have better cache locality in general.
 #[derive(Clone)]
 pub struct VecList<EntryData> {
-  /// The backing storage for the list. This includes both used and unused indices.`
+  /// The backing storage for the list. This includes both used and unused indices.
   entries: Vec<Entry<EntryData>>,
 
   /// The current generation of the list. This is used to avoid the ABA problem.
