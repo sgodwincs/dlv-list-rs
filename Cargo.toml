@@ -2,7 +2,7 @@
 name = "dlv-list"
 version = "0.4.0"
 authors = ["Scott Godwin <sgodwincs@gmail.com>"]
-license = "MIT"
+license = "MIT OR Apache-2.0"
 edition = "2021"
 repository = "https://github.com/sgodwincs/dlv-list-rs"
 description = "Semi-doubly linked list implemented using a vector"
