@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/dlv-list.svg)](https://crates.io/crates/dlv-list)
 [![Docs.rs](https://docs.rs/dlv-list/badge.svg)](https://docs.rs/dlv_list)
-[![CI](https://github.com/sgodwincs/dlv-list/workflows/CI/badge.svg)](https://github.com/{{gh-username}}/dlv-list/actions)
+[![CI](https://github.com/sgodwincs/dlv-list-rs/workflows/CI/badge.svg)](https://github.com/sgodwincs/dlv-list-rs/actions)
 
 Semi-doubly linked list implemented using a vector.
 
