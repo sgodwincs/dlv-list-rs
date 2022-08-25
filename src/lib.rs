@@ -66,6 +66,7 @@ impl<EntryData> VecList<EntryData> {
   /// list.push_back(5);
   /// assert_eq!(list.back(), Some(&5));
   /// ```
+  #[must_use]
   pub fn back(&self) -> Option<&EntryData> {
     let index = self.tail()?;
 
@@ -96,6 +97,7 @@ impl<EntryData> VecList<EntryData> {
   ///
   /// assert_eq!(list.back(), Some(&10));
   /// ```
+  #[must_use]
   pub fn back_mut(&mut self) -> Option<&mut EntryData> {
     let index = self.tail()?;
 
@@ -118,6 +120,7 @@ impl<EntryData> VecList<EntryData> {
   /// let list: VecList<u32> = VecList::with_capacity(10);
   /// assert_eq!(list.capacity(), 10);
   /// ```
+  #[must_use]
   pub fn capacity(&self) -> usize {
     self.entries.capacity()
   }
@@ -163,6 +166,7 @@ impl<EntryData> VecList<EntryData> {
   /// list.push_back(0);
   /// assert!(list.contains(&0));
   /// ```
+  #[must_use]
   pub fn contains(&self, value: &EntryData) -> bool
   where
     EntryData: PartialEq,
@@ -219,6 +223,7 @@ impl<EntryData> VecList<EntryData> {
   /// list.push_front(5);
   /// assert_eq!(list.front(), Some(&5));
   /// ```
+  #[must_use]
   pub fn front(&self) -> Option<&EntryData> {
     let index = self.head()?;
 
@@ -249,6 +254,7 @@ impl<EntryData> VecList<EntryData> {
   ///
   /// assert_eq!(list.front(), Some(&10));
   /// ```
+  #[must_use]
   pub fn front_mut(&mut self) -> Option<&mut EntryData> {
     let index = self.head()?;
 
@@ -277,6 +283,7 @@ impl<EntryData> VecList<EntryData> {
   /// let index = list.push_front(5);
   /// assert_eq!(list.get(index), Some(&5));
   /// ```
+  #[must_use]
   pub fn get(&self, index: Index<EntryData>) -> Option<&EntryData> {
     match self.entries.get(index.index)? {
       Entry::Occupied(entry) if entry.generation == index.generation => Some(&entry.value),
@@ -302,6 +309,7 @@ impl<EntryData> VecList<EntryData> {
   /// *value = 100;
   /// assert_eq!(list.get(index), Some(&100));
   /// ```
+  #[must_use]
   pub fn get_mut(&mut self, index: Index<EntryData>) -> Option<&mut EntryData> {
     match self.entries.get_mut(index.index)? {
       Entry::Occupied(entry) if entry.generation == index.generation => Some(&mut entry.value),
@@ -329,6 +337,7 @@ impl<EntryData> VecList<EntryData> {
   /// let index_2 = list.push_back(5);
   /// assert_eq!(list.get_next_index(index_1), Some(index_2));
   /// ```
+  #[must_use]
   pub fn get_next_index(&self, index: Index<EntryData>) -> Option<Index<EntryData>> {
     match self.entries.get(index.index)? {
       Entry::Occupied(entry) if entry.generation == index.generation => {
@@ -360,6 +369,7 @@ impl<EntryData> VecList<EntryData> {
   /// let index_2 = list.push_front(5);
   /// assert_eq!(list.get_previous_index(index_1), Some(index_2));
   /// ```
+  #[must_use]
   pub fn get_previous_index(&self, index: Index<EntryData>) -> Option<Index<EntryData>> {
     match self.entries.get(index.index)? {
       Entry::Occupied(entry) if entry.generation == index.generation => {
@@ -372,6 +382,7 @@ impl<EntryData> VecList<EntryData> {
   }
 
   /// Convenience function for returning the actual head index.
+  #[must_use]
   fn head(&self) -> Option<usize> {
     self.head.map(|head| head.get() - 1)
   }
@@ -396,6 +407,7 @@ impl<EntryData> VecList<EntryData> {
   ///
   /// assert_eq!(indices.next(), None);
   /// ```
+  #[must_use]
   pub fn indices(&self) -> Indices<'_, EntryData> {
     Indices {
       entries: &self.entries,
@@ -562,6 +574,7 @@ impl<EntryData> VecList<EntryData> {
   /// list.push_back(0);
   /// assert!(!list.is_empty());
   /// ```
+  #[must_use]
   pub fn is_empty(&self) -> bool {
     self.length == 0
   }
@@ -586,6 +599,7 @@ impl<EntryData> VecList<EntryData> {
   /// assert_eq!(iter.next(), Some(&-10));
   /// assert_eq!(iter.next(), None);
   /// ```
+  #[must_use]
   pub fn iter(&self) -> Iter<'_, EntryData> {
     Iter {
       entries: &self.entries,
@@ -615,6 +629,7 @@ impl<EntryData> VecList<EntryData> {
   /// assert_eq!(iter.next(), Some(&mut -10));
   /// assert_eq!(iter.next(), None);
   /// ```
+  #[must_use]
   pub fn iter_mut(&mut self) -> IterMut<'_, EntryData> {
     IterMut {
       entries: &mut self.entries,
@@ -640,6 +655,7 @@ impl<EntryData> VecList<EntryData> {
   /// list.push_back(2);
   /// assert_eq!(list.len(), 3);
   /// ```
+  #[must_use]
   pub fn len(&self) -> usize {
     self.length
   }
@@ -655,6 +671,7 @@ impl<EntryData> VecList<EntryData> {
   /// let index = list.push_back(0);
   /// assert_eq!(list.get(index), Some(&0));
   /// ```
+  #[must_use]
   pub fn new() -> Self {
     VecList::default()
   }
@@ -1074,11 +1091,13 @@ impl<EntryData> VecList<EntryData> {
   }
 
   /// Convenience function for returning the actual tail index.
+  #[must_use]
   fn tail(&self) -> Option<usize> {
     self.tail.map(|tail| tail.get() - 1)
   }
 
   /// Convenience function for returning the actual vacant head index.
+  #[must_use]
   fn vacant_head(&self) -> Option<usize> {
     self.vacant_head.map(|vacant_head| vacant_head.get() - 1)
   }
@@ -1096,6 +1115,7 @@ impl<EntryData> VecList<EntryData> {
   /// let mut list: VecList<u32> = VecList::with_capacity(10);
   /// assert_eq!(list.capacity(), 10);
   /// ```
+  #[must_use]
   pub fn with_capacity(capacity: usize) -> Self {
     VecList {
       entries: Vec::with_capacity(capacity),
@@ -1353,6 +1373,7 @@ impl<EntryData> PartialEq for Index<EntryData> {
 
 impl<EntryData> Index<EntryData> {
   /// Convenience function for creating new index.
+  #[must_use]
   pub(self) fn new(index: usize, generation: u64) -> Index<EntryData> {
     Index {
       generation,
@@ -1378,6 +1399,7 @@ impl<EntryData> Entry<EntryData> {
   /// # Panics
   ///
   /// Panics if the variant is actually [`Entry::Vacant`].
+  #[must_use]
   pub fn occupied(self) -> OccupiedEntry<EntryData> {
     use self::Entry::*;
 
@@ -1392,6 +1414,7 @@ impl<EntryData> Entry<EntryData> {
   /// # Panics
   ///
   /// Panics if the variant is actually [`Entry::Vacant`].
+  #[must_use]
   pub fn occupied_ref(&self) -> &OccupiedEntry<EntryData> {
     use self::Entry::*;
 
@@ -1406,6 +1429,7 @@ impl<EntryData> Entry<EntryData> {
   /// # Panics
   ///
   /// Panics if the variant is actually [`Entry::Vacant`].
+  #[must_use]
   pub fn occupied_mut(&mut self) -> &mut OccupiedEntry<EntryData> {
     use self::Entry::*;
 
@@ -1420,6 +1444,7 @@ impl<EntryData> Entry<EntryData> {
   /// # Panics
   ///
   /// Panics if the variant is actually [`Entry::Occupied`].
+  #[must_use]
   pub fn vacant_ref(&self) -> &VacantEntry {
     use self::Entry::*;
 
@@ -1448,6 +1473,7 @@ struct OccupiedEntry<EntryData> {
 
 impl<EntryData> OccupiedEntry<EntryData> {
   /// Convenience function for creating a new occupied entry.
+  #[must_use]
   pub fn new(
     generation: u64,
     previous: Option<usize>,
@@ -1472,6 +1498,7 @@ struct VacantEntry {
 
 impl VacantEntry {
   /// Convenience function for creating a new vacant entry.
+  #[must_use]
   pub fn new(next: Option<usize>) -> VacantEntry {
     VacantEntry { next }
   }
@@ -1494,6 +1521,7 @@ pub struct Drain<'entries, EntryData> {
 
 impl<EntryData> Drain<'_, EntryData> {
   /// Creates an iterator that yields immutable references to entries in the list.
+  #[must_use]
   pub fn iter(&self) -> Iter<'_, EntryData> {
     Iter {
       entries: &self.list.entries,
@@ -1664,6 +1692,7 @@ pub struct IntoIter<EntryData> {
 
 impl<EntryData> IntoIter<EntryData> {
   /// Creates an iterator that yields immutable references to entries in the list.
+  #[must_use]
   pub fn iter(&self) -> Iter<'_, EntryData> {
     Iter {
       entries: &self.list.entries,
@@ -1828,6 +1857,7 @@ pub struct IterMut<'entries, EntryData> {
 
 impl<EntryData> IterMut<'_, EntryData> {
   /// Creates an iterator that yields immutable references to entries in the list.
+  #[must_use]
   pub fn iter(&self) -> Iter<'_, EntryData> {
     Iter {
       entries: unsafe { &*self.entries },
@@ -1894,6 +1924,7 @@ unsafe impl<EntryData> Send for IterMut<'_, EntryData> where EntryData: Send {}
 unsafe impl<EntryData> Sync for IterMut<'_, EntryData> where EntryData: Sync {}
 
 /// Creates the initial generation seeded by the current time.
+#[must_use]
 fn create_initial_generation() -> u64 {
   let mut hasher = RandomState::new().build_hasher();
   hasher.write_u32(0);

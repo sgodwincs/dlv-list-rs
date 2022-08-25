@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+ - Added `#[must_use]` to all side-effect free functions.
+
 ## [0.3.0]
 
 ### Removed
