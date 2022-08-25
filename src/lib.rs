@@ -1303,6 +1303,24 @@ where
   }
 }
 
+impl<T, const N: usize> PartialEq<[T; N]> for VecList<T>
+where
+  T: PartialEq,
+{
+  fn eq(&self, other: &[T; N]) -> bool {
+    self.len() == other.len() && self.iter().eq(other.iter())
+  }
+}
+
+impl<T, const N: usize> PartialEq<VecList<T>> for [T; N]
+where
+  T: PartialEq,
+{
+  fn eq(&self, other: &VecList<T>) -> bool {
+    other == self
+  }
+}
+
 impl<'a, T> PartialEq<&'a [T]> for VecList<T>
 where
   T: PartialEq,
