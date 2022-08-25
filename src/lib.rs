@@ -1062,7 +1062,7 @@ impl<EntryData> VecList<EntryData> {
     let mut next_index = self.head();
 
     while let Some(index) = next_index {
-      let entry = &mut self.entries[index].occupied_mut();
+      let entry = self.entries[index].occupied_mut();
       next_index = entry.next;
 
       if !predicate(&mut entry.value) {
@@ -1171,7 +1171,7 @@ where
   where
     Iter: IntoIterator<Item = &'entries EntryData>,
   {
-    self.extend(iter.into_iter().cloned())
+    self.extend(iter.into_iter().copied());
   }
 }
 
