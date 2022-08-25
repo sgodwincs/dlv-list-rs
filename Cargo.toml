@@ -9,3 +9,6 @@ description = "Semi-doubly linked list implemented using a vector"
 readme = "README.md"
 categories = ["data-structures"]
 keywords = ["vector", "linked", "list"]
+
+[dependencies]
+serde = { version = "1", optional = true }
