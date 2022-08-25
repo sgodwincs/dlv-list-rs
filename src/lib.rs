@@ -2060,8 +2060,28 @@ mod test {
     let mut list = VecList::new();
     let index_1 = list.push_back(0);
     let index_2 = list.indices().next().unwrap();
-
     assert_eq!(index_1, index_2);
+
+    let index_3 = list.push_back(1);
+    assert_ne!(index_1, index_3);
+  }
+
+  #[test]
+  fn test_index_hash() {
+    let state = RandomState::new();
+
+    fn hash(state: &RandomState, value: &Index<usize>) -> u64 {
+      let mut hasher = state.build_hasher();
+      value.hash(&mut hasher);
+      hasher.finish()
+    }
+
+    let mut list = VecList::new();
+    let index_1 = list.push_back(0);
+    let index_2 = list.push_back(2);
+
+    assert_eq!(hash(&state, &index_1), hash(&state, &index_1));
+    assert_ne!(hash(&state, &index_1), hash(&state, &index_2));
   }
 
   #[test]
@@ -2459,12 +2479,50 @@ mod test {
     list_1.push_back(2);
     list_1.push_back(-2);
 
+    assert_eq!(list_1, Vec::from_iter([0, 1, -1, 2, -2]));
+    assert_eq!(Vec::from_iter([0, 1, -1, 2, -2]), list_1);
+    assert_ne!(list_1, Vec::new());
+    assert_ne!(Vec::new(), list_1);
+
+    assert_eq!(list_1, LinkedList::from_iter([0, 1, -1, 2, -2]));
+    assert_eq!(LinkedList::from_iter([0, 1, -1, 2, -2]), list_1);
+    assert_ne!(list_1, LinkedList::new());
+    assert_ne!(LinkedList::new(), list_1);
+
+    assert_eq!(list_1, [0, 1, -1, 2, -2]);
+    assert_eq!([0, 1, -1, 2, -2], list_1);
+    assert_ne!(list_1, []);
+    assert_ne!([], list_1);
+
+    assert_eq!(list_1, [0, 1, -1, 2, -2].as_slice());
+    assert_eq!([0, 1, -1, 2, -2].as_slice(), list_1);
+    assert_ne!(list_1, [].as_slice());
+    assert_ne!([].as_slice(), list_1);
+
     let mut list_2 = list_1.clone();
     list_2.pop_back();
     assert_ne!(list_1, list_2);
 
     list_2.push_back(-2);
     assert_eq!(list_1, list_2);
+  }
+
+  #[test]
+  fn test_vec_list_hash() {
+    let state = RandomState::new();
+    fn hash(state: &RandomState, value: &VecList<usize>) -> u64 {
+      let mut hasher = state.build_hasher();
+      value.hash(&mut hasher);
+      hasher.finish()
+    }
+
+    let mut list_1 = VecList::new();
+    list_1.push_back(0);
+
+    let list_2 = VecList::new();
+
+    assert_eq!(hash(&state, &list_1), hash(&state, &list_1));
+    assert_ne!(hash(&state, &list_1), hash(&state, &list_2));
   }
 
   #[test]
@@ -2598,7 +2656,7 @@ mod test {
     let mut list = VecList::new();
     let index = list.push_back(0);
     list.pop_back();
-    list[index];
+    let _ = list[index];
   }
 
   #[test]
@@ -2824,6 +2882,24 @@ mod test {
     assert_eq!(list.back(), Some(&1));
     list.push_back(2);
     assert_eq!(list.back(), Some(&2));
+  }
+
+  #[test]
+  fn test_vec_list_push_back_capacity_increases() {
+    let mut list = VecList::with_capacity(1);
+    assert_eq!(list.capacity(), 1);
+
+    let index = list.push_back(0);
+    assert_eq!(list.capacity(), 1);
+
+    list.remove(index);
+    assert_eq!(list.capacity(), 1);
+
+    list.push_back(0);
+    assert_eq!(list.capacity(), 1);
+
+    list.push_back(1);
+    assert!(list.capacity() > 1);
   }
 
   #[test]
