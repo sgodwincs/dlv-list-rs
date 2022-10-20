@@ -30,7 +30,6 @@ mod serde;
 /// implementation is O(n). Splicing has a similar disadvantage.
 ///
 /// Lastly, the vector based implementation is likely to have better cache locality in general.
-#[derive(Clone)]
 pub struct VecList<T> {
   /// The backing storage for the list. This includes both used and unused indices.
   entries: Vec<Entry<T>>,
@@ -50,6 +49,27 @@ pub struct VecList<T> {
 
   /// The index of the head of the vacant indices.
   vacant_head: Option<NonZeroUsize>,
+}
+
+impl<T: Clone> Clone for VecList<T> {
+  fn clone(&self) -> Self {
+    Self {
+      entries: self.entries.clone(),
+      generation: self.generation,
+      head: self.head,
+      length: self.length,
+      tail: self.tail,
+      vacant_head: self.vacant_head,
+    }
+  }
+  fn clone_from(&mut self, source: &Self) {
+    self.entries.clone_from(&source.entries);
+    self.generation = source.generation;
+    self.head = source.head;
+    self.length = source.length;
+    self.tail = source.tail;
+    self.vacant_head = source.vacant_head;
+  }
 }
 
 impl<T> VecList<T> {
@@ -3025,5 +3045,19 @@ mod test {
   fn test_vec_list_with_capacity() {
     let list: VecList<i32> = VecList::with_capacity(10);
     assert_eq!(list.capacity(), 10);
+  }
+
+  #[test]
+  fn test_vec_list_clone_from() {
+    let mut list = VecList::new();
+    let index_1 = list.push_back(0);
+    let index_2 = list.push_back(1);
+    let index_3 = list.push_back(2);
+
+    let mut list2 = VecList::new();
+    list2.clone_from(&list);
+    assert_eq!(list2.get(index_1), Some(&0));
+    assert_eq!(list2.get(index_2), Some(&1));
+    assert_eq!(list2.get(index_3), Some(&2));
   }
 }
