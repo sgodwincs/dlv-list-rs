@@ -2658,6 +2658,38 @@ mod test {
   }
 
   #[test]
+  fn test_vec_list_get_unchecked() {
+    let mut list = VecList::new();
+    let index = list.push_back(0);
+    assert_eq!(unsafe { list.get_unchecked(index) }, &0);
+
+    let mut list = VecList::new();
+    let index_1 = list.push_back(0);
+    let index_2 = list.push_back(1);
+    let index_3 = list.push_back(2);
+
+    list.remove(index_1);
+    assert_eq!(unsafe { list.get_unchecked(index_2) }, &1);
+    assert_eq!(unsafe { list.get_unchecked(index_3) }, &2);
+  }
+
+  #[test]
+  fn test_vec_list_get_unchecked_mut() {
+    let mut list = VecList::new();
+    let index = list.push_back(0);
+    assert_eq!(unsafe { list.get_unchecked_mut(index) }, &mut 0);
+
+    let mut list = VecList::new();
+    let index_1 = list.push_back(0);
+    let index_2 = list.push_back(1);
+    let index_3 = list.push_back(2);
+
+    list.remove(index_1);
+    assert_eq!(unsafe { list.get_unchecked_mut(index_2) }, &mut 1);
+    assert_eq!(unsafe { list.get_unchecked_mut(index_3) }, &mut 2);
+  }
+
+  #[test]
   fn test_vec_list_get_next_index() {
     let mut list = VecList::new();
 
