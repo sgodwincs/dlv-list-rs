@@ -293,6 +293,24 @@ impl<T> VecList<T> {
     }
   }
 
+  /// Returns an immutable reference to the value at the given index.
+  ///
+  /// Complexity: O(1)
+  ///
+  /// # Safety
+  ///
+  /// Caller needs to guarantee that the index is in bound, and has never been removed from the
+  /// list. This function does not perform generation checks. So if an element is removed then a
+  /// new element is added at the same index, then the returned reference will be to the new
+  /// element.
+  #[must_use]
+  pub unsafe fn get_unchecked(&self, index: Index<T>) -> &T {
+    match unsafe { self.entries.get_unchecked(index.index) } {
+      Entry::Occupied(entry) => &entry.value,
+      _ => unsafe { std::hint::unreachable_unchecked() },
+    }
+  }
+
   /// Returns a mutable reference to the value at the given index.
   ///
   /// If the index refers to an index not in the list anymore or if the index has been invalidated, then [`None`] will
@@ -316,6 +334,22 @@ impl<T> VecList<T> {
     match self.entries.get_mut(index.index)? {
       Entry::Occupied(entry) if entry.generation == index.generation => Some(&mut entry.value),
       _ => None,
+    }
+  }
+
+  /// Returns an mutable reference to the value at the given index.
+  ///
+  /// # Safety
+  ///
+  /// Caller needs to guarantee that the index is in bound, and has never been removed from the list.
+  /// See also: [`VecList::get_unchecked`].
+  ///
+  /// Complexity: O(1)
+  #[must_use]
+  pub unsafe fn get_unchecked_mut(&mut self, index: Index<T>) -> &mut T {
+    match unsafe { self.entries.get_unchecked_mut(index.index) } {
+      Entry::Occupied(entry) => &mut entry.value,
+      _ => unsafe { std::hint::unreachable_unchecked() },
     }
   }
 
