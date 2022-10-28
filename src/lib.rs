@@ -20,6 +20,77 @@ use std::{
 #[cfg(feature = "serde")]
 mod serde;
 
+/// Number type that's capable of representing [0, usize::MAX - 1]
+#[repr(transparent)]
+#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct NonMaxUsize(NonZeroUsize);
+
+impl Debug for NonMaxUsize {
+  fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    write!(f, "{}", self.get())
+  }
+}
+
+impl NonMaxUsize {
+  /// Convert an index to a usize
+  #[inline]
+  const fn get(&self) -> usize {
+    self.0.get() - 1
+  }
+
+  /// Create a new index from a usize, if `index` is `usize::MAX` then `None` is returned
+  #[inline]
+  const fn new(index: usize) -> Option<Self> {
+    match NonZeroUsize::new(index.wrapping_add(1)) {
+      Some(index) => Some(Self(index)),
+      None => None,
+    }
+  }
+
+  /// Create a new index from a usize, without checking if `index` is `usize::MAX`.
+  ///
+  /// # Safety
+  ///
+  /// `index` must not be `usize::MAX`
+  #[inline]
+  const unsafe fn new_unchecked(index: usize) -> Self {
+    Self(unsafe { NonZeroUsize::new_unchecked(index + 1) })
+  }
+
+  /// Add an unsigned integer to a index. Check for bound violation and return `None` if the result will be larger than or equal to `usize::MAX`
+  #[inline]
+  fn checked_add(&self, rhs: usize) -> Option<Self> {
+    self.0.checked_add(rhs).map(Self)
+  }
+
+  /// Subtract an unsigned integer from a index. Check for bound violation and return `None` if the result will be less than 0.
+  #[inline]
+  fn checked_sub(&self, rhs: usize) -> Option<Self> {
+    // Safety: `self` is less than `usize::MAX`, so `self - rhs` can only be less than `usize::MAX`
+    self
+      .get()
+      .checked_sub(rhs)
+      .map(|i| unsafe { Self::new_unchecked(i) })
+  }
+
+  #[inline]
+  const fn zero() -> Self {
+    Self(unsafe { NonZeroUsize::new_unchecked(1) })
+  }
+}
+
+impl PartialEq<usize> for NonMaxUsize {
+  fn eq(&self, other: &usize) -> bool {
+    self.get() == *other
+  }
+}
+
+impl PartialOrd<usize> for NonMaxUsize {
+  fn partial_cmp(&self, other: &usize) -> Option<Ordering> {
+    self.get().partial_cmp(other)
+  }
+}
+
 /// A semi-doubly linked list implemented with a vector.
 ///
 /// This provides many of the benefits of an actual linked list with a few tradeoffs. First, due to the use of an
@@ -38,17 +109,17 @@ pub struct VecList<T> {
   generation: u64,
 
   /// The index of the head of the list.
-  head: Option<NonZeroUsize>,
+  head: Option<NonMaxUsize>,
 
   /// The length of the list since we cannot rely on the length of [`VecList::entries`] because it includes unused
   /// indices.
   length: usize,
 
   /// The index of the tail of the list.
-  tail: Option<NonZeroUsize>,
+  tail: Option<NonMaxUsize>,
 
   /// The index of the head of the vacant indices.
-  vacant_head: Option<NonZeroUsize>,
+  vacant_head: Option<NonMaxUsize>,
 }
 
 impl<T: Clone> Clone for VecList<T> {
@@ -222,9 +293,9 @@ impl<T> VecList<T> {
   /// ```
   pub fn drain(&mut self) -> Drain<'_, T> {
     Drain {
-      head: self.head(),
+      head: self.head,
       remaining: self.length,
-      tail: self.tail(),
+      tail: self.tail,
       list: self,
     }
   }
@@ -307,7 +378,7 @@ impl<T> VecList<T> {
   /// ```
   #[must_use]
   pub fn get(&self, index: Index<T>) -> Option<&T> {
-    match self.entries.get(index.index)? {
+    match self.entries.get(index.index())? {
       Entry::Occupied(entry) if entry.generation == index.generation => Some(&entry.value),
       _ => None,
     }
@@ -325,7 +396,7 @@ impl<T> VecList<T> {
   /// element.
   #[must_use]
   pub unsafe fn get_unchecked(&self, index: Index<T>) -> &T {
-    match unsafe { self.entries.get_unchecked(index.index) } {
+    match unsafe { self.entries.get_unchecked(index.index()) } {
       Entry::Occupied(entry) => &entry.value,
       _ => unsafe { std::hint::unreachable_unchecked() },
     }
@@ -351,7 +422,7 @@ impl<T> VecList<T> {
   /// ```
   #[must_use]
   pub fn get_mut(&mut self, index: Index<T>) -> Option<&mut T> {
-    match self.entries.get_mut(index.index)? {
+    match self.entries.get_mut(index.index())? {
       Entry::Occupied(entry) if entry.generation == index.generation => Some(&mut entry.value),
       _ => None,
     }
@@ -367,7 +438,7 @@ impl<T> VecList<T> {
   /// Complexity: O(1)
   #[must_use]
   pub unsafe fn get_unchecked_mut(&mut self, index: Index<T>) -> &mut T {
-    match unsafe { self.entries.get_unchecked_mut(index.index) } {
+    match unsafe { self.entries.get_unchecked_mut(index.index()) } {
       Entry::Occupied(entry) => &mut entry.value,
       _ => unsafe { std::hint::unreachable_unchecked() },
     }
@@ -395,10 +466,10 @@ impl<T> VecList<T> {
   /// ```
   #[must_use]
   pub fn get_next_index(&self, index: Index<T>) -> Option<Index<T>> {
-    match self.entries.get(index.index)? {
+    match self.entries.get(index.index())? {
       Entry::Occupied(entry) if entry.generation == index.generation => {
         let next_index = entry.next?;
-        let next_entry = self.entries[next_index].occupied_ref();
+        let next_entry = self.entries[next_index.get()].occupied_ref();
         Some(Index::new(next_index, next_entry.generation))
       }
       _ => None,
@@ -427,10 +498,10 @@ impl<T> VecList<T> {
   /// ```
   #[must_use]
   pub fn get_previous_index(&self, index: Index<T>) -> Option<Index<T>> {
-    match self.entries.get(index.index)? {
+    match self.entries.get(index.index())? {
       Entry::Occupied(entry) if entry.generation == index.generation => {
         let previous_index = entry.previous?;
-        let previous_entry = self.entries[previous_index].occupied_ref();
+        let previous_entry = self.entries[previous_index.get()].occupied_ref();
         Some(Index::new(previous_index, previous_entry.generation))
       }
       _ => None,
@@ -440,21 +511,21 @@ impl<T> VecList<T> {
   /// Convenience function for returning the actual head index.
   #[must_use]
   fn head(&self) -> Option<usize> {
-    self.head.map(|head| head.get() - 1)
+    self.head.map(|head| head.get())
   }
 
   /// Connect the node at `index` to the node at `next`. If `index` is `None`, then the head will be
   /// set to `next`; if `next` is `None`, then the tail will be set to `index`.
   #[inline]
-  fn update_link(&mut self, index: Option<usize>, next: Option<usize>) {
+  fn update_link(&mut self, index: Option<NonMaxUsize>, next: Option<NonMaxUsize>) {
     if let Some(index) = index {
-      let entry = self.entries[index].occupied_mut();
+      let entry = self.entries[index.get()].occupied_mut();
       entry.next = next;
     } else {
       self.set_head(next.unwrap());
     }
     if let Some(next) = next {
-      let entry = self.entries[next].occupied_mut();
+      let entry = self.entries[next.get()].occupied_mut();
       entry.previous = index;
     } else {
       self.set_tail(index.unwrap());
@@ -483,13 +554,13 @@ impl<T> VecList<T> {
   /// assert_eq!(list.iter().rev().copied().collect::<Vec<_>>(), vec![3, 0, 2, 1]);
   /// ```
   pub fn move_after(&mut self, index: Index<T>, target: Index<T>) {
-    let (previous_index, next_index) = match &self.entries[index.index] {
+    let (previous_index, next_index) = match &self.entries[index.index()] {
       Entry::Occupied(entry) if entry.generation == index.generation => {
         (entry.previous, entry.next)
       }
       _ => panic!("expected occupied entry with correct generation at `index`"),
     };
-    let target_next_index = match &self.entries[target.index] {
+    let target_next_index = match &self.entries[target.index()] {
       Entry::Occupied(entry) if entry.generation == target.generation => entry.next,
       _ => panic!("expected occupied entry with correct generation at `target`"),
     };
@@ -527,13 +598,13 @@ impl<T> VecList<T> {
   /// assert_eq!(list.iter().rev().copied().collect::<Vec<_>>(), vec![3, 2, 0, 1]);
   /// ```
   pub fn move_before(&mut self, index: Index<T>, target: Index<T>) {
-    let (previous_index, next_index) = match &self.entries[index.index] {
+    let (previous_index, next_index) = match &self.entries[index.index()] {
       Entry::Occupied(entry) if entry.generation == index.generation => {
         (entry.previous, entry.next)
       }
       _ => panic!("expected occupied entry with correct generation at `index`"),
     };
-    let target_previous_index = match &self.entries[target.index] {
+    let target_previous_index = match &self.entries[target.index()] {
       Entry::Occupied(entry) if entry.generation == target.generation => entry.previous,
       _ => panic!("expected occupied entry with correct generation at `target`"),
     };
@@ -573,9 +644,9 @@ impl<T> VecList<T> {
   pub fn indices(&self) -> Indices<'_, T> {
     Indices {
       entries: &self.entries,
-      head: self.head(),
+      head: self.head,
       remaining: self.length,
-      tail: self.tail(),
+      tail: self.tail,
     }
   }
 
@@ -607,20 +678,20 @@ impl<T> VecList<T> {
   /// assert_eq!(list.get_next_index(index_1), Some(index_2));
   /// ```
   pub fn insert_after(&mut self, index: Index<T>, value: T) -> Index<T> {
-    let next_index = match &mut self.entries[index.index] {
+    let next_index = match &mut self.entries[index.index()] {
       Entry::Occupied(entry) if entry.generation == index.generation => entry.next,
       _ => panic!("expected occupied entry with correct generation"),
     };
     let new_index = self.insert_new(value, Some(index.index), next_index);
-    let entry = self.entries[index.index].occupied_mut();
+    let entry = self.entries[index.index()].occupied_mut();
     entry.next = Some(new_index);
 
-    if Some(index.index) == self.tail() {
+    if Some(index.index) == self.tail {
       self.set_tail(new_index);
     }
 
     if let Some(next_index) = next_index {
-      self.entries[next_index].occupied_mut().previous = Some(new_index);
+      self.entries[next_index.get()].occupied_mut().previous = Some(new_index);
     }
 
     Index::new(new_index, self.generation)
@@ -654,20 +725,20 @@ impl<T> VecList<T> {
   /// assert_eq!(list.get_previous_index(index_1), Some(index_2));
   /// ```
   pub fn insert_before(&mut self, index: Index<T>, value: T) -> Index<T> {
-    let previous_index = match &mut self.entries[index.index] {
+    let previous_index = match &mut self.entries[index.index()] {
       Entry::Occupied(entry) if entry.generation == index.generation => entry.previous,
       _ => panic!("expected occupied entry with correct generation"),
     };
     let new_index = self.insert_new(value, previous_index, Some(index.index));
-    let entry = self.entries[index.index].occupied_mut();
+    let entry = self.entries[index.index()].occupied_mut();
     entry.previous = Some(new_index);
 
-    if Some(index.index) == self.head() {
+    if Some(index.index) == self.head {
       self.set_head(new_index);
     }
 
     if let Some(previous_index) = previous_index {
-      self.entries[previous_index].occupied_mut().next = Some(new_index);
+      self.entries[previous_index.get()].occupied_mut().next = Some(new_index);
     }
 
     Index::new(new_index, self.generation)
@@ -691,17 +762,22 @@ impl<T> VecList<T> {
   /// # Panics
   ///
   /// Panics if the new capacity overflows `usize`.
-  fn insert_new(&mut self, value: T, previous: Option<usize>, next: Option<usize>) -> usize {
+  fn insert_new(
+    &mut self,
+    value: T,
+    previous: Option<NonMaxUsize>,
+    next: Option<NonMaxUsize>,
+  ) -> NonMaxUsize {
     self.length += 1;
 
     if self.length == usize::max_value() {
       panic!("reached maximum possible length");
     }
 
-    match self.vacant_head() {
+    match self.vacant_head {
       Some(index) => {
-        self.set_vacant_head(self.entries[index].vacant_ref().next);
-        self.entries[index] =
+        self.set_vacant_head(self.entries[index.get()].vacant_ref().next);
+        self.entries[index.get()] =
           Entry::Occupied(OccupiedEntry::new(self.generation, previous, next, value));
         index
       }
@@ -712,7 +788,7 @@ impl<T> VecList<T> {
           next,
           value,
         )));
-        self.entries.len() - 1
+        NonMaxUsize::new(self.entries.len() - 1).unwrap()
       }
     }
   }
@@ -759,9 +835,9 @@ impl<T> VecList<T> {
   pub fn iter(&self) -> Iter<'_, T> {
     Iter {
       entries: &self.entries,
-      head: self.head(),
+      head: self.head,
       remaining: self.length,
-      tail: self.tail(),
+      tail: self.tail,
     }
   }
 
@@ -789,10 +865,10 @@ impl<T> VecList<T> {
   pub fn iter_mut(&mut self) -> IterMut<'_, T> {
     IterMut {
       entries: &mut self.entries,
-      head: self.head(),
+      head: self.head,
       phantom: PhantomData,
       remaining: self.length,
-      tail: self.tail(),
+      tail: self.tail,
     }
   }
 
@@ -877,12 +953,12 @@ impl<T> VecList<T> {
       "cannot shrink to capacity lower than current length"
     );
 
-    let mut count = 0;
+    let mut count = NonMaxUsize::zero();
     let mut entries = Vec::with_capacity(minimum_capacity);
     let generation = create_initial_generation();
     let length = self.length;
     let mut map = HashMap::with_capacity(length);
-    let mut next_index = self.head();
+    let mut next_index = self.head;
 
     while let Some(index) = next_index {
       let mut entry = self.remove_entry(index).expect("expected occupied entry");
@@ -894,15 +970,19 @@ impl<T> VecList<T> {
       );
 
       entry.generation = generation;
-      entry.previous = if count > 0 { Some(count - 1) } else { None };
+      entry.previous = if count > 0 {
+        Some(count.checked_sub(1).unwrap())
+      } else {
+        None
+      };
       entry.next = if count < length - 1 {
-        Some(count + 1)
+        Some(count.checked_add(1).expect("overflow"))
       } else {
         None
       };
 
       entries.push(Entry::Occupied(entry));
-      count += 1;
+      count = count.checked_add(1).expect("overflow");
     }
 
     self.entries = entries;
@@ -911,8 +991,8 @@ impl<T> VecList<T> {
     self.vacant_head = None;
 
     if self.length > 0 {
-      self.set_head(0);
-      self.set_tail(length - 1);
+      self.set_head(NonMaxUsize::zero());
+      self.set_tail(NonMaxUsize::new(length - 1).unwrap());
     } else {
       self.head = None;
       self.tail = None;
@@ -981,7 +1061,7 @@ impl<T> VecList<T> {
   /// assert_eq!(list.len(), 2);
   /// ```
   pub fn pop_back(&mut self) -> Option<T> {
-    self.remove_entry(self.tail()?).map(|entry| entry.value)
+    self.remove_entry(self.tail?).map(|entry| entry.value)
   }
 
   /// Removes and returns the value at the front of the list, if it exists.
@@ -1005,7 +1085,7 @@ impl<T> VecList<T> {
   /// assert_eq!(list.len(), 2);
   /// ```
   pub fn pop_front(&mut self) -> Option<T> {
-    self.remove_entry(self.head()?).map(|entry| entry.value)
+    self.remove_entry(self.head?).map(|entry| entry.value)
   }
 
   /// Inserts the given value to the back of the list.
@@ -1028,12 +1108,12 @@ impl<T> VecList<T> {
   /// assert_eq!(list.get(index), Some(&0));
   /// ```
   pub fn push_back(&mut self, value: T) -> Index<T> {
-    let tail_index = match self.tail() {
+    let tail_index = match self.tail {
       Some(index) => index,
       None => return self.insert_empty(value),
     };
     let index = self.insert_new(value, Some(tail_index), None);
-    self.entries[tail_index].occupied_mut().next = Some(index);
+    self.entries[tail_index.get()].occupied_mut().next = Some(index);
     self.set_tail(index);
     Index::new(index, self.generation)
   }
@@ -1058,12 +1138,12 @@ impl<T> VecList<T> {
   /// assert_eq!(list.get(index), Some(&0));
   /// ```
   pub fn push_front(&mut self, value: T) -> Index<T> {
-    let head_index = match self.head() {
+    let head_index = match self.head {
       Some(index) => index,
       None => return self.insert_empty(value),
     };
     let index = self.insert_new(value, None, Some(head_index));
-    self.entries[head_index].occupied_mut().previous = Some(index);
+    self.entries[head_index.get()].occupied_mut().previous = Some(index);
     self.set_head(index);
     Index::new(index, self.generation)
   }
@@ -1086,7 +1166,7 @@ impl<T> VecList<T> {
   /// assert_eq!(list.remove(index), None);
   /// ```
   pub fn remove(&mut self, index: Index<T>) -> Option<T> {
-    let (previous_index, next_index) = match &self.entries[index.index] {
+    let (previous_index, next_index) = match &self.entries[index.index()] {
       Entry::Occupied(entry) if entry.generation == index.generation => {
         (entry.previous, entry.next)
       }
@@ -1103,8 +1183,8 @@ impl<T> VecList<T> {
   ///
   /// If the index refers to an index not in the list anymore or if the index has been invalidated, then [`None`] will
   /// be returned and the list will be unaffected.
-  fn remove_entry(&mut self, index: usize) -> Option<OccupiedEntry<T>> {
-    let (previous_index, next_index) = match &self.entries[index] {
+  fn remove_entry(&mut self, index: NonMaxUsize) -> Option<OccupiedEntry<T>> {
+    let (previous_index, next_index) = match &self.entries[index.get()] {
       Entry::Occupied(entry) => (entry.previous, entry.next),
       Entry::Vacant(_) => return None,
     };
@@ -1122,15 +1202,15 @@ impl<T> VecList<T> {
   /// constraints.
   fn remove_helper(
     &mut self,
-    previous_index: Option<usize>,
-    index: usize,
-    next_index: Option<usize>,
+    previous_index: Option<NonMaxUsize>,
+    index: NonMaxUsize,
+    next_index: Option<NonMaxUsize>,
   ) -> OccupiedEntry<T> {
-    let head_index = self.head().expect("expected head index");
-    let tail_index = self.tail().expect("expected tail index");
-    let vacant_head = self.vacant_head();
+    let head_index = self.head.expect("expected head index");
+    let tail_index = self.tail.expect("expected tail index");
+    let vacant_head = self.vacant_head;
     let removed_entry = mem::replace(
-      &mut self.entries[index],
+      &mut self.entries[index.get()],
       Entry::Vacant(VacantEntry::new(vacant_head)),
     );
 
@@ -1142,22 +1222,26 @@ impl<T> VecList<T> {
       self.head = None;
       self.tail = None;
     } else if index == head_index {
-      self.entries[next_index.expect("expected next entry to exist")]
+      self.entries[next_index.expect("expected next entry to exist").get()]
         .occupied_mut()
         .previous = None;
-      self.head = next_index.map(|index| NonZeroUsize::new(index + 1).unwrap());
+      self.head = next_index;
     } else if index == tail_index {
-      self.entries[previous_index.expect("expected previous entry to exist")]
-        .occupied_mut()
-        .next = None;
-      self.tail = previous_index.map(|index| NonZeroUsize::new(index + 1).unwrap());
+      self.entries[previous_index
+        .expect("expected previous entry to exist")
+        .get()]
+      .occupied_mut()
+      .next = None;
+      self.tail = previous_index;
     } else {
-      self.entries[next_index.expect("expected next entry to exist")]
+      self.entries[next_index.expect("expected next entry to exist").get()]
         .occupied_mut()
         .previous = previous_index;
-      self.entries[previous_index.expect("expected previous entry to exist")]
-        .occupied_mut()
-        .next = next_index;
+      self.entries[previous_index
+        .expect("expected previous entry to exist")
+        .get()]
+      .occupied_mut()
+      .next = next_index;
     }
 
     removed_entry.occupied()
@@ -1213,10 +1297,10 @@ impl<T> VecList<T> {
   where
     Predicate: FnMut(&mut T) -> bool,
   {
-    let mut next_index = self.head();
+    let mut next_index = self.head;
 
     while let Some(index) = next_index {
-      let entry = self.entries[index].occupied_mut();
+      let entry = self.entries[index.get()].occupied_mut();
       next_index = entry.next;
 
       if !predicate(&mut entry.value) {
@@ -1226,31 +1310,24 @@ impl<T> VecList<T> {
   }
 
   /// Convenience function for returning setting the offset head index.
-  fn set_head(&mut self, index: usize) {
-    self.head = Some(NonZeroUsize::new(index + 1).expect("head should not be 0"));
+  fn set_head(&mut self, index: NonMaxUsize) {
+    self.head = Some(index);
   }
 
   /// Convenience function for returning setting the offset tail index.
-  fn set_tail(&mut self, index: usize) {
-    self.tail = Some(NonZeroUsize::new(index + 1).expect("tail should not be 0"));
+  fn set_tail(&mut self, index: NonMaxUsize) {
+    self.tail = Some(index);
   }
 
   /// Convenience function for returning setting the offset vacant head index.
-  fn set_vacant_head(&mut self, index: Option<usize>) {
-    self.vacant_head =
-      index.map(|index| NonZeroUsize::new(index + 1).expect("vacant head should not be 0"));
+  fn set_vacant_head(&mut self, index: Option<NonMaxUsize>) {
+    self.vacant_head = index;
   }
 
   /// Convenience function for returning the actual tail index.
   #[must_use]
   fn tail(&self) -> Option<usize> {
-    self.tail.map(|tail| tail.get() - 1)
-  }
-
-  /// Convenience function for returning the actual vacant head index.
-  #[must_use]
-  fn vacant_head(&self) -> Option<usize> {
-    self.vacant_head.map(|vacant_head| vacant_head.get() - 1)
+    self.tail.map(|tail| tail.get())
   }
 
   /// Creates a new list with the given capacity.
@@ -1376,9 +1453,9 @@ impl<T> IntoIterator for VecList<T> {
 
   fn into_iter(self) -> Self::IntoIter {
     IntoIter {
-      head: self.head(),
+      head: self.head,
       remaining: self.length,
-      tail: self.tail(),
+      tail: self.tail,
       list: self,
     }
   }
@@ -1391,9 +1468,9 @@ impl<'a, T> IntoIterator for &'a VecList<T> {
   fn into_iter(self) -> Self::IntoIter {
     Iter {
       entries: &self.entries,
-      head: self.head(),
+      head: self.head,
       remaining: self.length,
-      tail: self.tail(),
+      tail: self.tail,
     }
   }
 }
@@ -1405,10 +1482,10 @@ impl<'a, T> IntoIterator for &'a mut VecList<T> {
   fn into_iter(self) -> Self::IntoIter {
     IterMut {
       entries: &mut self.entries,
-      head: self.head(),
+      head: self.head,
       phantom: PhantomData,
       remaining: self.length,
-      tail: self.tail(),
+      tail: self.tail,
     }
   }
 }
@@ -1520,7 +1597,7 @@ pub struct Index<T> {
   generation: u64,
 
   /// The actual index into the entry list.
-  index: usize,
+  index: NonMaxUsize,
 
   /// This type is parameterized on the entry data type to avoid indices being used across differently typed lists.
   phantom: PhantomData<T>,
@@ -1569,12 +1646,18 @@ impl<T> PartialEq for Index<T> {
 impl<T> Index<T> {
   /// Convenience function for creating new index.
   #[must_use]
-  pub(self) fn new(index: usize, generation: u64) -> Index<T> {
+  pub(self) fn new(index: NonMaxUsize, generation: u64) -> Index<T> {
     Index {
       generation,
       index,
       phantom: PhantomData,
     }
+  }
+
+  /// Get the index as usize
+  #[inline]
+  pub(self) fn index(&self) -> usize {
+    self.index.get()
   }
 }
 
@@ -1649,10 +1732,10 @@ struct OccupiedEntry<T> {
   generation: u64,
 
   /// The index of the next occupied entry in the list.
-  next: Option<usize>,
+  next: Option<NonMaxUsize>,
 
   /// The index of the previous occupied entry in the list.
-  previous: Option<usize>,
+  previous: Option<NonMaxUsize>,
 
   /// The actual value being stored in this entry.
   value: T,
@@ -1663,8 +1746,8 @@ impl<T> OccupiedEntry<T> {
   #[must_use]
   pub fn new(
     generation: u64,
-    previous: Option<usize>,
-    next: Option<usize>,
+    previous: Option<NonMaxUsize>,
+    next: Option<NonMaxUsize>,
     value: T,
   ) -> OccupiedEntry<T> {
     OccupiedEntry {
@@ -1680,13 +1763,13 @@ impl<T> OccupiedEntry<T> {
 #[derive(Clone, Debug)]
 struct VacantEntry {
   /// The index of the next vacant entry in the list.
-  next: Option<usize>,
+  next: Option<NonMaxUsize>,
 }
 
 impl VacantEntry {
   /// Convenience function for creating a new vacant entry.
   #[must_use]
-  pub fn new(next: Option<usize>) -> VacantEntry {
+  pub fn new(next: Option<NonMaxUsize>) -> VacantEntry {
     VacantEntry { next }
   }
 }
@@ -1694,7 +1777,7 @@ impl VacantEntry {
 /// An iterator that yields and removes all entries from the list.
 pub struct Drain<'a, T> {
   /// The index of the head of the unvisited portion of the list.
-  head: Option<usize>,
+  head: Option<NonMaxUsize>,
 
   /// A reference to the entry list.
   list: &'a mut VecList<T>,
@@ -1703,7 +1786,7 @@ pub struct Drain<'a, T> {
   remaining: usize,
 
   /// The index of the tail of the unvisited portion of the list.
-  tail: Option<usize>,
+  tail: Option<NonMaxUsize>,
 }
 
 impl<T> Drain<'_, T> {
@@ -1788,13 +1871,13 @@ pub struct Indices<'a, T> {
   entries: &'a Vec<Entry<T>>,
 
   /// The index of the head of the unvisited portion of the list.
-  head: Option<usize>,
+  head: Option<NonMaxUsize>,
 
   /// The number of entries that have not been visited.
   remaining: usize,
 
   /// The index of the tail of the unvisited portion of the list.
-  tail: Option<usize>,
+  tail: Option<NonMaxUsize>,
 }
 
 impl<T> Clone for Indices<'_, T> {
@@ -1825,7 +1908,7 @@ impl<T> DoubleEndedIterator for Indices<'_, T> {
       None
     } else {
       self.tail.map(|index| {
-        let entry = self.entries[index].occupied_ref();
+        let entry = self.entries[index.get()].occupied_ref();
         let index = Index::new(index, entry.generation);
         self.tail = entry.previous;
         self.remaining -= 1;
@@ -1847,7 +1930,7 @@ impl<T> Iterator for Indices<'_, T> {
       None
     } else {
       self.head.map(|index| {
-        let entry = self.entries[index].occupied_ref();
+        let entry = self.entries[index.get()].occupied_ref();
         let index = Index::new(index, entry.generation);
         self.head = entry.next;
         self.remaining -= 1;
@@ -1865,7 +1948,7 @@ impl<T> Iterator for Indices<'_, T> {
 #[derive(Clone)]
 pub struct IntoIter<T> {
   /// The index of the head of the unvisited portion of the list.
-  head: Option<usize>,
+  head: Option<NonMaxUsize>,
 
   /// The entry list from which entries are yielded.
   list: VecList<T>,
@@ -1874,7 +1957,7 @@ pub struct IntoIter<T> {
   remaining: usize,
 
   /// The index of the tail of the unvisited portion of the list.
-  tail: Option<usize>,
+  tail: Option<NonMaxUsize>,
 }
 
 impl<T> IntoIter<T> {
@@ -1953,13 +2036,13 @@ pub struct Iter<'a, T> {
   entries: &'a Vec<Entry<T>>,
 
   /// The index of the head of the unvisited portion of the list.
-  head: Option<usize>,
+  head: Option<NonMaxUsize>,
 
   /// The number of entries that have not been visited.
   remaining: usize,
 
   /// The index of the tail of the unvisited portion of the list.
-  tail: Option<usize>,
+  tail: Option<NonMaxUsize>,
 }
 
 impl<'a, T> Clone for Iter<'a, T> {
@@ -1990,7 +2073,7 @@ impl<T> DoubleEndedIterator for Iter<'_, T> {
       None
     } else {
       self.tail.map(|index| {
-        let entry = self.entries[index].occupied_ref();
+        let entry = self.entries[index.get()].occupied_ref();
         self.tail = entry.previous;
         self.remaining -= 1;
         &entry.value
@@ -2011,7 +2094,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
       None
     } else {
       self.head.map(|index| {
-        let entry = self.entries[index].occupied_ref();
+        let entry = self.entries[index.get()].occupied_ref();
         self.head = entry.next;
         self.remaining -= 1;
         &entry.value
@@ -2029,7 +2112,7 @@ pub struct IterMut<'a, T> {
   entries: *mut Vec<Entry<T>>,
 
   /// The index of the head of the unvisited portion of the list.
-  head: Option<usize>,
+  head: Option<NonMaxUsize>,
 
   /// Because [`IterMut::entries`] is a pointer, we need to have a phantom data here for the lifetime parameter.
   phantom: PhantomData<&'a mut Vec<Entry<T>>>,
@@ -2038,7 +2121,7 @@ pub struct IterMut<'a, T> {
   remaining: usize,
 
   /// The index of the tail of the unvisited portion of the list.
-  tail: Option<usize>,
+  tail: Option<NonMaxUsize>,
 }
 
 impl<T> IterMut<'_, T> {
@@ -2071,7 +2154,7 @@ impl<T> DoubleEndedIterator for IterMut<'_, T> {
       None
     } else {
       self.tail.map(|index| {
-        let entry = unsafe { &mut (*self.entries)[index] }.occupied_mut();
+        let entry = unsafe { &mut (*self.entries)[index.get()] }.occupied_mut();
         self.tail = entry.previous;
         self.remaining -= 1;
         &mut entry.value
@@ -2092,7 +2175,7 @@ impl<'a, T> Iterator for IterMut<'a, T> {
       None
     } else {
       self.head.map(|index| {
-        let entry = unsafe { &mut (*self.entries)[index] }.occupied_mut();
+        let entry = unsafe { &mut (*self.entries)[index.get()] }.occupied_mut();
         self.head = entry.next;
         self.remaining -= 1;
         &mut entry.value
@@ -2135,6 +2218,13 @@ mod test {
     check_bounds::<IntoIter<()>>();
     check_bounds::<Iter<'_, ()>>();
     check_bounds::<IterMut<'_, ()>>();
+  }
+
+  #[test]
+  fn test_non_max_usize_eq() {
+    let zero = NonMaxUsize::zero();
+    assert_eq!(zero, 0usize);
+    assert_ne!(zero, 1usize);
   }
 
   #[test]
@@ -2279,11 +2369,11 @@ mod test {
     list.push_back(-2);
 
     let mut indices = list.indices();
-    assert_eq!(indices.next().unwrap().index, 0);
-    assert_eq!(indices.next_back().unwrap().index, 4);
-    assert_eq!(indices.next().unwrap().index, 1);
-    assert_eq!(indices.next_back().unwrap().index, 3);
-    assert_eq!(indices.next().unwrap().index, 2);
+    assert_eq!(indices.next().unwrap().index.get(), 0);
+    assert_eq!(indices.next_back().unwrap().index.get(), 4);
+    assert_eq!(indices.next().unwrap().index.get(), 1);
+    assert_eq!(indices.next_back().unwrap().index.get(), 3);
+    assert_eq!(indices.next().unwrap().index.get(), 2);
     assert_eq!(indices.next_back(), None);
   }
 
@@ -2299,7 +2389,7 @@ mod test {
     let mut list: VecList<i32> = VecList::new();
     list.push_back(0);
     let mut indices = list.indices();
-    assert_eq!(indices.next().unwrap().index, 0);
+    assert_eq!(indices.next().unwrap().index.get(), 0);
     assert_eq!(indices.next(), None);
     assert_eq!(indices.next(), None);
     assert_eq!(indices.next(), None);
@@ -2823,7 +2913,7 @@ mod test {
     assert_eq!(list.get_next_index(index), None);
 
     list.push_back(1);
-    assert_eq!(list.get_next_index(index).unwrap().index, 1);
+    assert_eq!(list.get_next_index(index).unwrap().index.get(), 1);
   }
 
   #[test]
@@ -2834,7 +2924,7 @@ mod test {
     assert_eq!(list.get_previous_index(index), None);
 
     list.push_front(1);
-    assert_eq!(list.get_previous_index(index).unwrap().index, 1);
+    assert_eq!(list.get_previous_index(index).unwrap().index.get(), 1);
   }
 
   #[test]
@@ -2869,15 +2959,15 @@ mod test {
     list.remove(index);
 
     let mut iter = list.indices();
-    assert_eq!(iter.next().unwrap().index, 0);
-    assert_eq!(iter.next().unwrap().index, 2);
+    assert_eq!(iter.next().unwrap().index.get(), 0);
+    assert_eq!(iter.next().unwrap().index.get(), 2);
     assert_eq!(iter.next(), None);
 
     list.pack_to_fit();
 
     let mut iter = list.indices();
-    assert_eq!(iter.next().unwrap().index, 0);
-    assert_eq!(iter.next().unwrap().index, 1);
+    assert_eq!(iter.next().unwrap().index.get(), 0);
+    assert_eq!(iter.next().unwrap().index.get(), 1);
     assert_eq!(iter.next(), None);
   }
 
@@ -3158,17 +3248,23 @@ mod test {
     assert!(list.capacity() >= 3);
 
     let indices = list.indices();
-    assert_eq!(indices.map(|index| index.index).collect::<Vec<_>>(), [1, 2]);
+    assert_eq!(
+      indices.map(|index| index.index.get()).collect::<Vec<_>>(),
+      [1, 2]
+    );
 
     let map = list.pack_to(5);
     assert_eq!(list.capacity(), 5);
 
     let indices = list.indices();
-    assert_eq!(indices.map(|index| index.index).collect::<Vec<_>>(), [0, 1]);
+    assert_eq!(
+      indices.map(|index| index.index.get()).collect::<Vec<_>>(),
+      [0, 1]
+    );
 
     assert_eq!(map.len(), 2);
-    assert_eq!(map.get(&index_2).unwrap().index, 0);
-    assert_eq!(map.get(&index_3).unwrap().index, 1);
+    assert_eq!(map.get(&index_2).unwrap().index.get(), 0);
+    assert_eq!(map.get(&index_3).unwrap().index.get(), 1);
   }
 
   #[test]
@@ -3200,17 +3296,23 @@ mod test {
     assert!(list.capacity() >= 3);
 
     let indices = list.indices();
-    assert_eq!(indices.map(|index| index.index).collect::<Vec<_>>(), [1, 2]);
+    assert_eq!(
+      indices.map(|index| index.index.get()).collect::<Vec<_>>(),
+      [1, 2]
+    );
 
     let map = list.pack_to_fit();
     assert_eq!(list.capacity(), 2);
 
     let indices = list.indices();
-    assert_eq!(indices.map(|index| index.index).collect::<Vec<_>>(), [0, 1]);
+    assert_eq!(
+      indices.map(|index| index.index.get()).collect::<Vec<_>>(),
+      [0, 1]
+    );
 
     assert_eq!(map.len(), 2);
-    assert_eq!(map.get(&index_2).unwrap().index, 0);
-    assert_eq!(map.get(&index_3).unwrap().index, 1);
+    assert_eq!(map.get(&index_2).unwrap().index.get(), 0);
+    assert_eq!(map.get(&index_3).unwrap().index.get(), 1);
   }
 
   #[test]
