@@ -443,6 +443,112 @@ impl<T> VecList<T> {
     self.head.map(|head| head.get() - 1)
   }
 
+  /// Connect the node at `index` to the node at `next`. If `index` is `None`, then the head will be
+  /// set to `next`; if `next` is `None`, then the tail will be set to `index`.
+  #[inline]
+  fn update_link(&mut self, index: Option<usize>, next: Option<usize>) {
+    if let Some(index) = index {
+      let entry = self.entries[index].occupied_mut();
+      entry.next = next;
+    } else {
+      self.set_head(next.unwrap());
+    }
+    if let Some(next) = next {
+      let entry = self.entries[next].occupied_mut();
+      entry.previous = index;
+    } else {
+      self.set_tail(index.unwrap());
+    }
+  }
+
+  /// Move the node at `index` to after the node at `target`.
+  ///
+  /// # Panics
+  ///
+  /// Panics if either `index` or `target` is invalidated. Also panics if `index` is the same as `target`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use dlv_list::VecList;
+  ///
+  /// let mut list = VecList::new();
+  /// let index_1 = list.push_back(0);
+  /// let index_2 = list.push_back(1);
+  /// let index_3 = list.push_back(2);
+  /// let index_4 = list.push_back(3);
+  ///
+  /// list.move_after(index_1, index_3);
+  /// assert_eq!(list.iter().copied().collect::<Vec<_>>(), vec![1, 2, 0, 3]);
+  /// assert_eq!(list.iter().rev().copied().collect::<Vec<_>>(), vec![3, 0, 2, 1]);
+  /// ```
+  pub fn move_after(&mut self, index: Index<T>, target: Index<T>) {
+    let (previous_index, next_index) = match &self.entries[index.index] {
+      Entry::Occupied(entry) if entry.generation == index.generation => {
+        (entry.previous, entry.next)
+      }
+      _ => panic!("expected occupied entry with correct generation at `index`"),
+    };
+    let target_next_index = match &self.entries[target.index] {
+      Entry::Occupied(entry) if entry.generation == target.generation => entry.next,
+      _ => panic!("expected occupied entry with correct generation at `target`"),
+    };
+    if target.index == index.index {
+      panic!("cannot move after `index` itself");
+    }
+    if previous_index == Some(target.index) {
+      // Already in the right place
+      return;
+    }
+    self.update_link(previous_index, next_index);
+    self.update_link(Some(target.index), Some(index.index));
+    self.update_link(Some(index.index), target_next_index);
+  }
+
+  /// Move the node at `index` to before the node at `target`.
+  ///
+  /// # Panics
+  ///
+  /// Panics if either `index` or `target` is invalidated. Also panics if `index` is the same as `target`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use dlv_list::VecList;
+  ///
+  /// let mut list = VecList::new();
+  /// let index_1 = list.push_back(0);
+  /// let index_2 = list.push_back(1);
+  /// let index_3 = list.push_back(2);
+  /// let index_4 = list.push_back(3);
+  ///
+  /// list.move_before(index_1, index_3);
+  /// assert_eq!(list.iter().copied().collect::<Vec<_>>(), vec![1, 0, 2, 3]);
+  /// assert_eq!(list.iter().rev().copied().collect::<Vec<_>>(), vec![3, 2, 0, 1]);
+  /// ```
+  pub fn move_before(&mut self, index: Index<T>, target: Index<T>) {
+    let (previous_index, next_index) = match &self.entries[index.index] {
+      Entry::Occupied(entry) if entry.generation == index.generation => {
+        (entry.previous, entry.next)
+      }
+      _ => panic!("expected occupied entry with correct generation at `index`"),
+    };
+    let target_previous_index = match &self.entries[target.index] {
+      Entry::Occupied(entry) if entry.generation == target.generation => entry.previous,
+      _ => panic!("expected occupied entry with correct generation at `target`"),
+    };
+    if target.index == index.index {
+      panic!("cannot move before `index` itself");
+    }
+    if next_index == Some(target.index) {
+      // Already in the right place
+      return;
+    }
+    self.update_link(previous_index, next_index);
+    self.update_link(Some(index.index), Some(target.index));
+    self.update_link(target_previous_index, Some(index.index));
+  }
+
   /// Creates an indices iterator which will yield all indices of the list in order.
   ///
   /// # Examples
@@ -3125,5 +3231,94 @@ mod test {
     assert_eq!(list2.get(index_1), Some(&0));
     assert_eq!(list2.get(index_2), Some(&1));
     assert_eq!(list2.get(index_3), Some(&2));
+  }
+  #[test]
+  fn test_move_individual_elements() {
+    let mut list = VecList::new();
+    let index_1 = list.push_back(0);
+    let index_2 = list.push_back(1);
+    let index_3 = list.push_back(2);
+    let index_4 = list.push_back(3);
+
+    // Move to tail
+    list.move_after(index_1, index_4);
+    assert_eq!(list.iter().copied().collect::<Vec<_>>(), vec![1, 2, 3, 0]);
+    assert_eq!(
+      list.iter().rev().copied().collect::<Vec<_>>(),
+      vec![0, 3, 2, 1]
+    );
+    assert_eq!(list.back(), list.get(index_1));
+
+    // Move to head
+    list.move_before(index_1, index_2);
+    assert_eq!(list.iter().copied().collect::<Vec<_>>(), vec![0, 1, 2, 3]);
+    assert_eq!(
+      list.iter().rev().copied().collect::<Vec<_>>(),
+      vec![3, 2, 1, 0]
+    );
+
+    // Move non-tail/head node
+    list.move_before(index_3, index_2);
+    assert_eq!(list.iter().copied().collect::<Vec<_>>(), vec![0, 2, 1, 3]);
+    assert_eq!(
+      list.iter().rev().copied().collect::<Vec<_>>(),
+      vec![3, 1, 2, 0]
+    );
+  }
+
+  #[should_panic]
+  #[test]
+  fn test_move_after_panic1() {
+    let mut list = VecList::new();
+    let index_1 = list.push_back(0);
+    let index_2 = list.push_back(1);
+    list.remove(index_1);
+    list.move_after(index_1, index_2);
+  }
+
+  #[should_panic]
+  #[test]
+  fn test_move_after_panic2() {
+    let mut list = VecList::new();
+    let index_1 = list.push_back(0);
+    let index_2 = list.push_back(1);
+    list.remove(index_1);
+    list.move_after(index_2, index_1);
+  }
+
+  #[should_panic]
+  #[test]
+  fn test_move_after_panic3() {
+    let mut list = VecList::new();
+    let index_1 = list.push_back(0);
+    list.move_after(index_1, index_1);
+  }
+
+  #[should_panic]
+  #[test]
+  fn test_move_before_panic1() {
+    let mut list = VecList::new();
+    let index_1 = list.push_back(0);
+    let index_2 = list.push_back(1);
+    list.remove(index_1);
+    list.move_before(index_1, index_2);
+  }
+
+  #[should_panic]
+  #[test]
+  fn test_move_before_panic2() {
+    let mut list = VecList::new();
+    let index_1 = list.push_back(0);
+    let index_2 = list.push_back(1);
+    list.remove(index_1);
+    list.move_before(index_2, index_1);
+  }
+
+  #[should_panic]
+  #[test]
+  fn test_move_before_panic3() {
+    let mut list = VecList::new();
+    let index_1 = list.push_back(0);
+    list.move_before(index_1, index_1);
   }
 }
