@@ -162,7 +162,7 @@ impl<T> VecList<T> {
   /// ```
   #[must_use]
   pub fn back(&self) -> Option<&T> {
-    let index = self.tail()?;
+    let index = self.tail?.get();
 
     match &self.entries[index] {
       Entry::Occupied(entry) => Some(&entry.value),
@@ -193,7 +193,7 @@ impl<T> VecList<T> {
   /// ```
   #[must_use]
   pub fn back_mut(&mut self) -> Option<&mut T> {
-    let index = self.tail()?;
+    let index = self.tail?.get();
 
     match &mut self.entries[index] {
       Entry::Occupied(entry) => Some(&mut entry.value),
@@ -318,7 +318,7 @@ impl<T> VecList<T> {
   /// ```
   #[must_use]
   pub fn front(&self) -> Option<&T> {
-    let index = self.head()?;
+    let index = self.head?.get();
 
     match &self.entries[index] {
       Entry::Occupied(entry) => Some(&entry.value),
@@ -349,7 +349,7 @@ impl<T> VecList<T> {
   /// ```
   #[must_use]
   pub fn front_mut(&mut self) -> Option<&mut T> {
-    let index = self.head()?;
+    let index = self.head?.get();
 
     match &mut self.entries[index] {
       Entry::Occupied(entry) => Some(&mut entry.value),
@@ -508,12 +508,6 @@ impl<T> VecList<T> {
     }
   }
 
-  /// Convenience function for returning the actual head index.
-  #[must_use]
-  fn head(&self) -> Option<usize> {
-    self.head.map(|head| head.get())
-  }
-
   /// Connect the node at `index` to the node at `next`. If `index` is `None`, then the head will be
   /// set to `next`; if `next` is `None`, then the tail will be set to `index`.
   #[inline]
@@ -522,13 +516,13 @@ impl<T> VecList<T> {
       let entry = self.entries[index.get()].occupied_mut();
       entry.next = next;
     } else {
-      self.set_head(next.unwrap());
+      self.head = next
     }
     if let Some(next) = next {
       let entry = self.entries[next.get()].occupied_mut();
       entry.previous = index;
     } else {
-      self.set_tail(index.unwrap());
+      self.tail = index;
     }
   }
 
@@ -687,7 +681,7 @@ impl<T> VecList<T> {
     entry.next = Some(new_index);
 
     if Some(index.index) == self.tail {
-      self.set_tail(new_index);
+      self.tail = Some(new_index);
     }
 
     if let Some(next_index) = next_index {
@@ -734,7 +728,7 @@ impl<T> VecList<T> {
     entry.previous = Some(new_index);
 
     if Some(index.index) == self.head {
-      self.set_head(new_index);
+      self.head = Some(new_index);
     }
 
     if let Some(previous_index) = previous_index {
@@ -752,8 +746,8 @@ impl<T> VecList<T> {
   fn insert_empty(&mut self, value: T) -> Index<T> {
     let generation = self.generation;
     let index = self.insert_new(value, None, None);
-    self.set_head(index);
-    self.set_tail(index);
+    self.head = Some(index);
+    self.tail = Some(index);
     Index::new(index, generation)
   }
 
@@ -776,7 +770,7 @@ impl<T> VecList<T> {
 
     match self.vacant_head {
       Some(index) => {
-        self.set_vacant_head(self.entries[index.get()].vacant_ref().next);
+        self.vacant_head = self.entries[index.get()].vacant_ref().next;
         self.entries[index.get()] =
           Entry::Occupied(OccupiedEntry::new(self.generation, previous, next, value));
         index
@@ -991,8 +985,9 @@ impl<T> VecList<T> {
     self.vacant_head = None;
 
     if self.length > 0 {
-      self.set_head(NonMaxUsize::zero());
-      self.set_tail(NonMaxUsize::new(length - 1).unwrap());
+      self.head = Some(NonMaxUsize::zero());
+      // Safety: `self.length - 1` is always less than `usize::MAX`.
+      self.tail = Some(unsafe { NonMaxUsize::new_unchecked(length - 1) });
     } else {
       self.head = None;
       self.tail = None;
@@ -1114,7 +1109,7 @@ impl<T> VecList<T> {
     };
     let index = self.insert_new(value, Some(tail_index), None);
     self.entries[tail_index.get()].occupied_mut().next = Some(index);
-    self.set_tail(index);
+    self.tail = Some(index);
     Index::new(index, self.generation)
   }
 
@@ -1144,7 +1139,7 @@ impl<T> VecList<T> {
     };
     let index = self.insert_new(value, None, Some(head_index));
     self.entries[head_index.get()].occupied_mut().previous = Some(index);
-    self.set_head(index);
+    self.head = Some(index);
     Index::new(index, self.generation)
   }
 
@@ -1216,7 +1211,7 @@ impl<T> VecList<T> {
 
     self.generation = self.generation.wrapping_add(1);
     self.length -= 1;
-    self.set_vacant_head(Some(index));
+    self.vacant_head = Some(index);
 
     if index == head_index && index == tail_index {
       self.head = None;
@@ -1307,27 +1302,6 @@ impl<T> VecList<T> {
         let _ = self.remove_entry(index);
       }
     }
-  }
-
-  /// Convenience function for returning setting the offset head index.
-  fn set_head(&mut self, index: NonMaxUsize) {
-    self.head = Some(index);
-  }
-
-  /// Convenience function for returning setting the offset tail index.
-  fn set_tail(&mut self, index: NonMaxUsize) {
-    self.tail = Some(index);
-  }
-
-  /// Convenience function for returning setting the offset vacant head index.
-  fn set_vacant_head(&mut self, index: Option<NonMaxUsize>) {
-    self.vacant_head = index;
-  }
-
-  /// Convenience function for returning the actual tail index.
-  #[must_use]
-  fn tail(&self) -> Option<usize> {
-    self.tail.map(|tail| tail.get())
   }
 
   /// Creates a new list with the given capacity.
