@@ -1,21 +1,33 @@
 //! Crate that implements a semi-doubly linked list via a vector.
 //!
 //! See [`VecList`] for more information.
+//!
+//! # Features
+//! 
+//! By default, this crate uses the Rust standard library. To disable this, disable the default
+//! `no_std` feature. Without this feature, certain methods will not be available.
 
 #![allow(unsafe_code)]
 #![cfg_attr(coverage_nightly, feature(no_coverage))]
+#![cfg_attr(not(any(feature = "std", test)), no_std)]
 
-use std::{
+extern crate alloc;
+
+use alloc::{collections::LinkedList, vec::Vec};
+use core::{
   cmp::Ordering,
-  collections::{hash_map::RandomState, HashMap, LinkedList},
   fmt::{self, Debug, Formatter},
-  hash::{BuildHasher, Hash, Hasher},
+  hash::{Hash, Hasher},
+  hint::unreachable_unchecked,
   iter::{FromIterator, FusedIterator},
   marker::PhantomData,
   mem,
   num::NonZeroUsize,
   ops,
 };
+
+#[cfg(feature = "std")]
+use std::collections::HashMap;
 
 #[cfg(feature = "serde")]
 mod serde;
@@ -52,18 +64,21 @@ impl NonMaxUsize {
   /// # Safety
   ///
   /// `index` must not be `usize::MAX`
+  #[cfg(feature = "std")]
   #[inline]
   const unsafe fn new_unchecked(index: usize) -> Self {
     Self(unsafe { NonZeroUsize::new_unchecked(index + 1) })
   }
 
   /// Add an unsigned integer to a index. Check for bound violation and return `None` if the result will be larger than or equal to `usize::MAX`
+  #[cfg(feature = "std")]
   #[inline]
   fn checked_add(&self, rhs: usize) -> Option<Self> {
     self.0.checked_add(rhs).map(Self)
   }
 
   /// Subtract an unsigned integer from a index. Check for bound violation and return `None` if the result will be less than 0.
+  #[cfg(feature = "std")]
   #[inline]
   fn checked_sub(&self, rhs: usize) -> Option<Self> {
     // Safety: `self` is less than `usize::MAX`, so `self - rhs` can only be less than `usize::MAX`
@@ -73,6 +88,7 @@ impl NonMaxUsize {
       .map(|i| unsafe { Self::new_unchecked(i) })
   }
 
+  #[cfg(feature = "std")]
   #[inline]
   const fn zero() -> Self {
     Self(unsafe { NonZeroUsize::new_unchecked(1) })
@@ -398,7 +414,7 @@ impl<T> VecList<T> {
   pub unsafe fn get_unchecked(&self, index: Index<T>) -> &T {
     match unsafe { self.entries.get_unchecked(index.index()) } {
       Entry::Occupied(entry) => &entry.value,
-      _ => unsafe { std::hint::unreachable_unchecked() },
+      _ => unsafe { unreachable_unchecked() },
     }
   }
 
@@ -440,7 +456,7 @@ impl<T> VecList<T> {
   pub unsafe fn get_unchecked_mut(&mut self, index: Index<T>) -> &mut T {
     match unsafe { self.entries.get_unchecked_mut(index.index()) } {
       Entry::Occupied(entry) => &mut entry.value,
-      _ => unsafe { std::hint::unreachable_unchecked() },
+      _ => unsafe { unreachable_unchecked() },
     }
   }
 
@@ -941,6 +957,7 @@ impl<T> VecList<T> {
   /// assert_eq!(iter.next(), Some(&10));
   /// assert_eq!(iter.next(), None);
   /// ```
+  #[cfg(feature = "std")]
   pub fn pack_to(&mut self, minimum_capacity: usize) -> HashMap<Index<T>, Index<T>> {
     assert!(
       minimum_capacity >= self.length,
@@ -1031,6 +1048,7 @@ impl<T> VecList<T> {
   /// assert_eq!(iter.next(), Some(&10));
   /// assert_eq!(iter.next(), None);
   /// ```
+  #[cfg(feature = "std")]
   pub fn pack_to_fit(&mut self) -> HashMap<Index<T>, Index<T>> {
     self.pack_to(self.length)
   }
@@ -2169,9 +2187,17 @@ unsafe impl<T> Sync for IterMut<'_, T> where T: Sync {}
 /// Creates the initial generation seeded by the current time.
 #[must_use]
 fn create_initial_generation() -> u64 {
-  let mut hasher = RandomState::new().build_hasher();
-  hasher.write_u32(0);
-  hasher.finish()
+  #[cfg(feature = "std")]
+  {
+    use std::{collections::hash_map::RandomState, hash::BuildHasher};
+
+    let mut hasher = RandomState::new().build_hasher();
+    hasher.write_u32(0);
+    hasher.finish()
+  }
+
+  #[cfg(not(feature = "std"))]
+  const_random::const_random!(u64)
 }
 
 #[allow(unused_results)]
@@ -2180,6 +2206,10 @@ mod test {
   use coverage_helper::test;
 
   use super::*;
+  use alloc::{format, vec};
+
+  #[cfg(feature = "std")]
+  use std::{collections::hash_map::RandomState, hash::BuildHasher};
 
   #[test]
   fn test_bounds() {
@@ -2194,6 +2224,7 @@ mod test {
     check_bounds::<IterMut<'_, ()>>();
   }
 
+  #[cfg(feature = "std")]
   #[test]
   fn test_non_max_usize_eq() {
     let zero = NonMaxUsize::zero();
@@ -2296,6 +2327,7 @@ mod test {
     assert_ne!(index_1, index_3);
   }
 
+  #[cfg(feature = "std")]
   #[test]
   fn test_index_hash() {
     let state = RandomState::new();
@@ -2737,6 +2769,7 @@ mod test {
     assert_eq!(list_1, list_2);
   }
 
+  #[cfg(feature = "std")]
   #[test]
   fn test_vec_list_hash() {
     let state = RandomState::new();
@@ -2807,6 +2840,7 @@ mod test {
     assert_eq!(list.front_mut(), None);
   }
 
+  #[cfg(feature = "std")]
   #[test]
   fn test_vec_list_get() {
     let mut list = VecList::new();
@@ -2827,6 +2861,7 @@ mod test {
     assert_eq!(list.get(index_3), None);
   }
 
+  #[cfg(feature = "std")]
   #[test]
   fn test_vec_list_get_mut() {
     let mut list = VecList::new();
@@ -2921,6 +2956,7 @@ mod test {
     let _ = list[index];
   }
 
+  #[cfg(feature = "std")]
   #[test]
   fn test_vec_list_indices() {
     let mut list = VecList::new();
@@ -2971,6 +3007,7 @@ mod test {
     list.insert_after(index, 1);
   }
 
+  #[cfg(feature = "std")]
   #[should_panic]
   #[test]
   fn test_vec_list_insert_after_panic_index_out_of_bounds() {
@@ -3010,6 +3047,7 @@ mod test {
     list.insert_before(index, 1);
   }
 
+  #[cfg(feature = "std")]
   #[should_panic]
   #[test]
   fn test_vec_list_insert_before_panic_index_out_of_bounds() {
@@ -3210,6 +3248,7 @@ mod test {
     assert_eq!(list.into_iter().collect::<Vec<_>>(), [0, 1, 2]);
   }
 
+  #[cfg(feature = "std")]
   #[test]
   fn test_vec_list_pack_to() {
     let mut list = VecList::new();
@@ -3241,6 +3280,7 @@ mod test {
     assert_eq!(map.get(&index_3).unwrap().index.get(), 1);
   }
 
+  #[cfg(feature = "std")]
   #[test]
   fn test_vec_list_pack_to_empty() {
     let mut list: VecList<i32> = VecList::with_capacity(5);
@@ -3248,6 +3288,7 @@ mod test {
     assert_eq!(list.capacity(), 0);
   }
 
+  #[cfg(feature = "std")]
   #[should_panic]
   #[test]
   fn test_vec_list_pack_to_panic() {
@@ -3258,6 +3299,7 @@ mod test {
     list.pack_to(2);
   }
 
+  #[cfg(feature = "std")]
   #[test]
   fn test_vec_list_pack_to_fit() {
     let mut list = VecList::new();
