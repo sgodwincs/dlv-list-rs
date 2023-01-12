@@ -3,7 +3,7 @@
 //! See [`VecList`] for more information.
 //!
 //! # Features
-//! 
+//!
 //! By default, this crate uses the Rust standard library. To disable this, disable the default
 //! `no_std` feature. Without this feature, certain methods will not be available.
 
@@ -2197,7 +2197,37 @@ fn create_initial_generation() -> u64 {
   }
 
   #[cfg(not(feature = "std"))]
-  const_random::const_random!(u64)
+  {
+    use core::sync::atomic::{AtomicU32, Ordering};
+
+    // Generate a u32 randomly.
+    fn gen_u32() -> u32 {
+      static SEED: AtomicU32 = AtomicU32::new({
+        // Random seed generated at compile time.
+        const_random::const_random!(u32)
+      });
+
+      // Xorshift is "good enough" in most cases.
+      let mut x = SEED.load(Ordering::Relaxed);
+
+      loop {
+        let mut random = x;
+        random ^= random << 13;
+        random ^= random >> 17;
+        random ^= random << 5;
+
+        // Put the new seed in.
+        if let Err(actual) = SEED.compare_exchange(x, random, Ordering::SeqCst, Ordering::SeqCst) {
+          x = actual;
+        } else {
+          return random;
+        }
+      }
+    }
+
+    // Put two u32's together
+    gen_u32() as u64 | ((gen_u32() as u64) << 32)
+  }
 }
 
 #[allow(unused_results)]
