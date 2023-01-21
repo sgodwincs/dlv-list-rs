@@ -7,6 +7,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.0] - 2023-01-21
+
+### Added
+
+ - Added support for `no_std` - @notgull
+ - Added `get_unchecked` and `get_unchecked_mut` functions - @yshui
+ - Added `move_before` and `move_after` functions - @yshui
+
+### Changed
+
+ - Added specific implementation for in-place clone for better performance - @yshui
+ - Reduced size of `Entry` - @yshui
+
 ## [0.4.0] - 2022-08-25
 
 ### Added
