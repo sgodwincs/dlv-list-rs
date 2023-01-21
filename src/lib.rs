@@ -2272,7 +2272,7 @@ mod test {
     list.push_back(-2);
 
     let drain = list.drain();
-    assert_eq!(format!("{:?}", drain), "Drain([0, 1, -1, 2, -2])");
+    assert_eq!(format!("{drain:?}"), "Drain([0, 1, -1, 2, -2])");
   }
 
   #[test]
@@ -2341,7 +2341,7 @@ mod test {
     let index = list.push_back(5);
 
     assert_eq!(
-      format!("{:?}", index),
+      format!("{index:?}"),
       format!("Index(0, {})", index.generation)
     );
   }
@@ -2387,7 +2387,7 @@ mod test {
 
     let indices = list.indices();
     assert_eq!(
-      format!("{:?}", indices),
+      format!("{indices:?}"),
       format!(
         "Indices([Index(0, {}), Index(1, {}), Index(2, {}), Index(3, {}), Index(4, {})])",
         list.generation, list.generation, list.generation, list.generation, list.generation
@@ -2465,7 +2465,7 @@ mod test {
     list.push_back(-2);
 
     let iter = list.into_iter();
-    assert_eq!(format!("{:?}", iter), "IntoIter([0, 1, -1, 2, -2])");
+    assert_eq!(format!("{iter:?}"), "IntoIter([0, 1, -1, 2, -2])");
   }
 
   #[test]
@@ -2538,7 +2538,7 @@ mod test {
     list.push_back(-2);
 
     let iter = list.iter();
-    assert_eq!(format!("{:?}", iter), "Iter([0, 1, -1, 2, -2])");
+    assert_eq!(format!("{iter:?}"), "Iter([0, 1, -1, 2, -2])");
   }
 
   #[test]
@@ -2611,7 +2611,7 @@ mod test {
     list.push_back(-2);
 
     let iter = list.iter_mut();
-    assert_eq!(format!("{:?}", iter), "IterMut([0, 1, -1, 2, -2])");
+    assert_eq!(format!("{iter:?}"), "IterMut([0, 1, -1, 2, -2])");
   }
 
   #[test]
@@ -2759,7 +2759,7 @@ mod test {
     list.push_back(2);
     list.push_back(-2);
 
-    assert_eq!(format!("{:?}", list), "[0, 1, -1, 2, -2]");
+    assert_eq!(format!("{list:?}"), "[0, 1, -1, 2, -2]");
   }
 
   #[test]
