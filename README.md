@@ -8,6 +8,7 @@ Semi-doubly linked list implemented using a vector.
 
 # Features
 
+ - `std` (default) enables usage of `libstd`, disabling this feature will make the crate `no_std` compatible.
  - `serde` for (de)serialization.
 
 ## License

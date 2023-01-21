@@ -11,8 +11,13 @@ categories = ["data-structures"]
 keywords = ["vector", "linked", "list"]
 
 [dependencies]
-serde = { version = "1", optional = true }
+const-random = "0.1.15"
+serde = { version = "1", optional = true, default-features = false }
 
 [dev-dependencies]
 coverage-helper = "0.1.0"
 serde_test = "1.0.144"
+
+[features]
+default = ["std"]
+std = []
