@@ -2201,6 +2201,7 @@ fn create_initial_generation() -> u64 {
     use core::sync::atomic::{AtomicU32, Ordering};
 
     // Generate a u32 randomly.
+    #[mutants::skip]
     fn gen_u32() -> u32 {
       static SEED: AtomicU32 = AtomicU32::new({
         // Random seed generated at compile time.
