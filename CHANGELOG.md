@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.1] - 2023-08-31
+
+### Added
+
+ - Added `front_index` and `back_index` functions - @ColinFinck
+
 ## [0.5.0] - 2023-01-21
 
 ### Added
