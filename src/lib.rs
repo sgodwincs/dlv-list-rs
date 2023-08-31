@@ -45,6 +45,7 @@ impl Debug for NonMaxUsize {
 
 impl NonMaxUsize {
   /// Convert an index to a usize
+  #[cfg_attr(mutants, mutants::skip)]
   #[inline]
   const fn get(&self) -> usize {
     self.0.get() - 1
@@ -149,7 +150,7 @@ impl<T: Clone> Clone for VecList<T> {
       vacant_head: self.vacant_head,
     }
   }
-  
+
   fn clone_from(&mut self, source: &Self) {
     self.entries.clone_from(&source.entries);
     self.generation = source.generation;
