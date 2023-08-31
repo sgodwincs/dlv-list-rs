@@ -149,6 +149,7 @@ impl<T: Clone> Clone for VecList<T> {
       vacant_head: self.vacant_head,
     }
   }
+  
   fn clone_from(&mut self, source: &Self) {
     self.entries.clone_from(&source.entries);
     self.generation = source.generation;
@@ -1645,11 +1646,7 @@ pub struct Index<T> {
 
 impl<T> Clone for Index<T> {
   fn clone(&self) -> Self {
-    Index {
-      generation: self.generation,
-      index: self.index,
-      phantom: PhantomData,
-    }
+    *self
   }
 }
 
