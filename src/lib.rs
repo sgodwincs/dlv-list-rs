@@ -186,6 +186,30 @@ impl<T> VecList<T> {
     }
   }
 
+  /// Returns the index of the value at the back of the list, if it exists.
+  ///
+  /// Complexity: O(1)
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use dlv_list::VecList;
+  ///
+  /// let mut list = VecList::new();
+  /// assert_eq!(list.back_index(), None);
+  ///
+  /// list.push_back(0);
+  /// let index = list.push_back(5);
+  /// assert_eq!(list.back_index(), Some(index));
+  /// ```
+  #[must_use]
+  pub fn back_index(&self) -> Option<Index<T>> {
+    let index = self.tail?;
+    let entry = self.entries[index.get()].occupied_ref();
+    let index = Index::new(index, entry.generation);
+    Some(index)
+  }
+
   /// Returns a mutable reference to the value at the back of the list, if it exists.
   ///
   /// Complexity: O(1)
@@ -340,6 +364,30 @@ impl<T> VecList<T> {
       Entry::Occupied(entry) => Some(&entry.value),
       _ => None,
     }
+  }
+
+  /// Returns the index of the value at the front of the list, if it exists.
+  ///
+  /// Complexity: O(1)
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use dlv_list::VecList;
+  ///
+  /// let mut list = VecList::new();
+  /// assert_eq!(list.front_index(), None);
+  ///
+  /// list.push_front(0);
+  /// let index = list.push_front(5);
+  /// assert_eq!(list.front_index(), Some(index));
+  /// ```
+  #[must_use]
+  pub fn front_index(&self) -> Option<Index<T>> {
+    let index = self.head?;
+    let entry = self.entries[index.get()].occupied_ref();
+    let index = Index::new(index, entry.generation);
+    Some(index)
   }
 
   /// Returns a mutable reference to the value at the front of the list, if it exists.
@@ -3381,6 +3429,7 @@ mod test {
     assert_eq!(list2.get(index_2), Some(&1));
     assert_eq!(list2.get(index_3), Some(&2));
   }
+
   #[test]
   fn test_move_individual_elements() {
     let mut list = VecList::new();
@@ -3412,6 +3461,32 @@ mod test {
     assert_eq!(
       list.iter().rev().copied().collect::<Vec<_>>(),
       vec![3, 1, 2, 0]
+    );
+  }
+
+  #[test]
+  fn test_move_back_index_front_index() {
+    let mut list = VecList::new();
+    let index_1 = list.push_back(0);
+    list.push_back(1);
+    list.push_back(2);
+    list.push_back(3);
+
+    // Move to tail
+    list.move_after(index_1, list.back_index().unwrap());
+    assert_eq!(list.iter().copied().collect::<Vec<_>>(), vec![1, 2, 3, 0]);
+    assert_eq!(
+      list.iter().rev().copied().collect::<Vec<_>>(),
+      vec![0, 3, 2, 1]
+    );
+    assert_eq!(list.back(), list.get(index_1));
+
+    // Move to head
+    list.move_before(index_1, list.front_index().unwrap());
+    assert_eq!(list.iter().copied().collect::<Vec<_>>(), vec![0, 1, 2, 3]);
+    assert_eq!(
+      list.iter().rev().copied().collect::<Vec<_>>(),
+      vec![3, 2, 1, 0]
     );
   }
 
