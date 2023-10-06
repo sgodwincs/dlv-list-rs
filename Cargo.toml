@@ -15,7 +15,7 @@ const-random = "0.1.15"
 serde = { version = "1", optional = true, default-features = false }
 
 [dev-dependencies]
-coverage-helper = "0.1.0"
+coverage-helper = "0.2.0"
 serde_test = "1.0.144"
 
 [features]
