@@ -8,7 +8,7 @@
 //! `no_std` feature. Without this feature, certain methods will not be available.
 
 #![allow(unsafe_code)]
-#![cfg_attr(coverage_nightly, feature(no_coverage))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![cfg_attr(not(any(feature = "std", test)), no_std)]
 
 extern crate alloc;
