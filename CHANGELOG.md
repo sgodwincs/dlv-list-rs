@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.2] - 2023-10-24
+
+### Changed
+
+ - Updated `coverage-helper` dependency to `0.2.0`.
+
 ## [0.5.1] - 2023-08-31
 
 ### Added
