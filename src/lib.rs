@@ -2844,11 +2844,6 @@ mod test {
   #[test]
   fn test_vec_list_hash() {
     let state = RandomState::new();
-    fn hash(state: &RandomState, value: &VecList<usize>) -> u64 {
-      let mut hasher = state.build_hasher();
-      value.hash(&mut hasher);
-      hasher.finish()
-    }
 
     let mut list_1: VecList<usize> = VecList::new();
     list_1.push_back(0);
@@ -2856,7 +2851,7 @@ mod test {
     let list_2: VecList<usize> = VecList::new();
 
     assert_eq!(state.hash_one(&list_1), state.hash_one(&list_1));
-    assert_ne!(state.hash_one(&list_1), state.hash_one(&list_2));
+    assert_ne!(state.hash_one(&list_1), state.hash_one(list_2));
   }
 
   #[test]
