@@ -2409,18 +2409,12 @@ mod test {
   fn test_index_hash() {
     let state = RandomState::new();
 
-    fn hash(state: &RandomState, value: &Index<usize>) -> u64 {
-      let mut hasher = state.build_hasher();
-      value.hash(&mut hasher);
-      hasher.finish()
-    }
-
     let mut list = VecList::new();
     let index_1 = list.push_back(0);
     let index_2 = list.push_back(2);
 
-    assert_eq!(hash(&state, &index_1), hash(&state, &index_1));
-    assert_ne!(hash(&state, &index_1), hash(&state, &index_2));
+    assert_eq!(state.hash_one(index_1), state.hash_one(index_1));
+    assert_ne!(state.hash_one(index_1), state.hash_one(index_2));
   }
 
   #[test]
