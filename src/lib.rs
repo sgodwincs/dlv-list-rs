@@ -2850,13 +2850,13 @@ mod test {
       hasher.finish()
     }
 
-    let mut list_1 = VecList::new();
+    let mut list_1: VecList<usize> = VecList::new();
     list_1.push_back(0);
 
-    let list_2 = VecList::new();
+    let list_2: VecList<usize> = VecList::new();
 
-    assert_eq!(hash(&state, &list_1), hash(&state, &list_1));
-    assert_ne!(hash(&state, &list_1), hash(&state, &list_2));
+    assert_eq!(state.hash_one(&list_1), state.hash_one(&list_1));
+    assert_ne!(state.hash_one(&list_1), state.hash_one(&list_2));
   }
 
   #[test]
