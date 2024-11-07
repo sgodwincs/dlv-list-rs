@@ -17,12 +17,12 @@ jobs:
           toolchain: nightly
           override: true
       - uses: Swatinem/rust-cache@v2
-      - name: Build & run tests
-        run: cargo test --all-features
+      - name: Build & run tests for default and serde features
+        run: cargo test --features std,serde
       - name: Build & run tests without libstd
-        run: cargo test --no-default-features
+        run: cargo test --no-default-features --features const-random
       - name: Build & run tests without libstd, but with serde
-        run: cargo test --no-default-features --features serde
+        run: cargo test --no-default-features --features const-random,serde
   miri:
     runs-on: ubuntu-latest
     steps:
@@ -32,8 +32,12 @@ jobs:
           toolchain: nightly
           components: miri
           override: true
-      - name: Test with Miri
-        run: cargo miri test --all-features
+      - name: Test with Miri, default and serde features
+        run: cargo miri test --features std,serde
+      - name: Test with Miri, without libstd
+        run: cargo miri test --no-default-features --features const-random
+      - name: Test with Miri, without libstd but with serde
+        run: cargo miri test --no-default-features --features const-random,serde
   mutation:
     runs-on: ubuntu-latest
     steps:
@@ -67,7 +71,9 @@ jobs:
           override: true
       - uses: Swatinem/rust-cache@v2
       - name: Run clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --features std,serde -- -D warnings
+      - name: Run clippy for const-random feature
+        run: cargo clippy --workspace --all-targets --no-default-features --features const-random -- -D warnings
       - name: Check format
         run: cargo fmt --all -- --check
   coverage:
@@ -85,9 +91,11 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
       - name: Generate code coverage
-        run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+        run: cargo llvm-cov --features std,serde --workspace --lcov --output-path lcov.info
+      - name: Generate code coverage for no_std
+        run: cargo llvm-cov --no-default-features --features const-random --workspace --lcov --output-path lcov_nostd.info
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          files: lcov.info
+          files: lcov.info,lcov_nostd.info
           fail_ci_if_error: true
