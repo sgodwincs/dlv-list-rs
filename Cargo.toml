@@ -11,7 +11,7 @@ categories = ["data-structures"]
 keywords = ["vector", "linked", "list"]
 
 [dependencies]
-const-random = "0.1.15"
+const-random = { version = "0.1.15", optional = true }
 serde = { version = "1", optional = true, default-features = false }
 
 [dev-dependencies]
@@ -21,3 +21,4 @@ serde_test = "1.0.144"
 [features]
 default = ["std"]
 std = []
+const-random = ["dep:const-random"]

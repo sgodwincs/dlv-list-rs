@@ -5,11 +5,15 @@
 //! # Features
 //!
 //! By default, this crate uses the Rust standard library. To disable this, disable the default
-//! `no_std` feature. Without this feature, certain methods will not be available.
+//! `std` feature, and enable the `const-random` feature. Without these features, certain methods
+//! will not be available.
 
 #![allow(unsafe_code)]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![cfg_attr(not(any(feature = "std", test)), no_std)]
+
+#[cfg(all(feature = "std", feature = "const-random"))]
+compile_error!("default feature 'std' and feature 'const-random' cannot be enabled at the same time: for no_std environments, disable 'std' and enable 'const-random'");
 
 extern crate alloc;
 
