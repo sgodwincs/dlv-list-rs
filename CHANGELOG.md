@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+ - Moved `const-random` dependency behind a feature (only used for no_std environments) - @zmrow
+
 ## [0.5.2] - 2023-10-24
 
 ### Changed
