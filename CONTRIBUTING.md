@@ -48,13 +48,15 @@ cargo test
 - Run Clippy:
 
   ```shell
-  cargo clippy --all-targets --all-features --workspace
+  cargo clippy --all-targets --workspace --features std,serde
+  cargo clippy --all-targets --workspace --features const-random --no-default-features
   ```
 
 - Run all tests:
 
   ```shell
-  cargo test --all-features --workspace
+  cargo test --features std,serde --workspace
+  cargo test --features const-random --no-default-features --workspace
   ```
 
 - Check to see if there are code formatting issues
