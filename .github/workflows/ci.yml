@@ -95,7 +95,7 @@ jobs:
       - name: Generate code coverage for no_std
         run: cargo llvm-cov --no-default-features --features const-random --workspace --lcov --output-path lcov_nostd.info
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: lcov.info,lcov_nostd.info
           fail_ci_if_error: true
