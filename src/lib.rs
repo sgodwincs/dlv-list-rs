@@ -834,7 +834,7 @@ impl<T> VecList<T> {
   ) -> NonMaxUsize {
     self.length += 1;
 
-    if self.length == usize::max_value() {
+    if self.length == usize::MAX {
       panic!("reached maximum possible length");
     }
 
@@ -2235,6 +2235,7 @@ unsafe impl<T> Send for IterMut<'_, T> where T: Send {}
 unsafe impl<T> Sync for IterMut<'_, T> where T: Sync {}
 
 /// Creates the initial generation seeded by the current time.
+#[cfg_attr(mutants, mutants::skip)]
 #[must_use]
 fn create_initial_generation() -> u64 {
   #[cfg(feature = "std")]
@@ -2251,7 +2252,6 @@ fn create_initial_generation() -> u64 {
     use core::sync::atomic::{AtomicU32, Ordering};
 
     // Generate a u32 randomly.
-    #[cfg_attr(mutants, mutants::skip)]
     fn gen_u32() -> u32 {
       static SEED: AtomicU32 = AtomicU32::new({
         // Random seed generated at compile time.
@@ -2818,28 +2818,30 @@ mod test {
 
     assert_eq!(list_1, Vec::from_iter([0, 1, -1, 2, -2]));
     assert_eq!(Vec::from_iter([0, 1, -1, 2, -2]), list_1);
-    assert_ne!(list_1, Vec::new());
+    assert_ne!(list_1, Vec::from_iter([0, 1, -1, 2, -3]));
     assert_ne!(Vec::new(), list_1);
 
     assert_eq!(list_1, LinkedList::from_iter([0, 1, -1, 2, -2]));
     assert_eq!(LinkedList::from_iter([0, 1, -1, 2, -2]), list_1);
-    assert_ne!(list_1, LinkedList::new());
+    assert_ne!(list_1, LinkedList::from_iter([0, 1, -1, 2, -3]));
     assert_ne!(LinkedList::new(), list_1);
 
     assert_eq!(list_1, [0, 1, -1, 2, -2]);
     assert_eq!([0, 1, -1, 2, -2], list_1);
-    assert_ne!(list_1, []);
+    assert_ne!(list_1, [0, 1, -1, 2, -3]);
     assert_ne!([], list_1);
 
     assert_eq!(list_1, [0, 1, -1, 2, -2].as_slice());
     assert_eq!([0, 1, -1, 2, -2].as_slice(), list_1);
-    assert_ne!(list_1, [].as_slice());
+    assert_ne!(list_1, [0, 1, -1, 2, -3].as_slice());
     assert_ne!([].as_slice(), list_1);
 
     let mut list_2 = list_1.clone();
     list_2.pop_back();
+    list_2.push_back(-3);
     assert_ne!(list_1, list_2);
 
+    list_2.pop_back();
     list_2.push_back(-2);
     assert_eq!(list_1, list_2);
   }
@@ -3327,13 +3329,13 @@ mod test {
     let index_3 = list.push_back(2);
     assert!(list.capacity() >= 3);
 
-    list.remove(index_1);
+    list.remove(index_2);
     assert!(list.capacity() >= 3);
 
     let indices = list.indices();
     assert_eq!(
       indices.map(|index| index.index.get()).collect::<Vec<_>>(),
-      [1, 2]
+      [0, 2]
     );
 
     let map = list.pack_to(5);
@@ -3346,8 +3348,18 @@ mod test {
     );
 
     assert_eq!(map.len(), 2);
-    assert_eq!(map.get(&index_2).unwrap().index.get(), 0);
+    assert_eq!(map.get(&index_1).unwrap().index.get(), 0);
     assert_eq!(map.get(&index_3).unwrap().index.get(), 1);
+
+    let new_index_1 = *map.get(&index_1).unwrap();
+    let new_index_3 = *map.get(&index_3).unwrap();
+    assert_eq!(list.get_previous_index(new_index_1), None);
+    assert_eq!(list.get_next_index(new_index_1), Some(new_index_3));
+    assert_eq!(list.get_previous_index(new_index_3), Some(new_index_1));
+    assert_eq!(list.get_next_index(new_index_3), None);
+
+    assert_eq!(list.front(), Some(&0));
+    assert_eq!(list.back(), Some(&2));
   }
 
   #[cfg(feature = "std")]

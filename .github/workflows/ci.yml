@@ -53,7 +53,7 @@ jobs:
       - name: Install cargo-mutants
         run: cargo install cargo-mutants
       - name: Run mutant tests
-        run: cargo mutants --jobs ${{ steps.cpu-cores.outputs.count }} -- --all-features
+        run: cargo mutants --jobs ${{ steps.cpu-cores.outputs.count }} -- --features std,serde
       - name: Archive results
         uses: actions/upload-artifact@v4
         if: failure()

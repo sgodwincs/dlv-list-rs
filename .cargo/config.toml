@@ -11,7 +11,6 @@ rustflags = [
   "-Wmissing_docs",
   "-Wnon_ascii_idents",
   "-Wnoop_method_call",
-  "-Wpointer_structural_match",
   "-Wsingle_use_lifetimes",
   "-Wtrivial_casts",
   "-Wtrivial_numeric_casts",
@@ -22,5 +21,5 @@ rustflags = [
   "-Wunused_lifetimes",
   "-Wunused_qualifications",
   "-Wunused_results",
-  "-Wvariant_size_differences"
+  "-Wvariant_size_differences",
 ]
