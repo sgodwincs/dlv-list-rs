@@ -1,6 +1,6 @@
 [package]
 name = "dlv-list"
-version = "0.5.2"
+version = "0.6.0"
 authors = ["Scott Godwin <sgodwincs@gmail.com>"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
