@@ -2283,8 +2283,8 @@ fn create_initial_generation() -> u64 {
 
 #[allow(unused_results)]
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod test {
-  use coverage_helper::test;
 
   use super::*;
   use alloc::{format, vec};
